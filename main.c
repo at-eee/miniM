@@ -462,6 +462,14 @@ int main(void) {
         printf("Quitting the editor...\r\n");
     }
 
+    // Freeing window size data structure
     free(ws);
+    // Freeing text_lines container contents
+    for(int i = 0; i < line_count; i++){
+        free(*(text_lines+i));
+    }
+    free(text_lines);
+    // Freeing char_count_in_lines contents
+    free(char_count_in_lines);
     return 0;
 }
