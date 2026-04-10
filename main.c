@@ -13,9 +13,9 @@ int tty_fd;
 
 #define DEBUG_MODE 0
 
-#define TEXT_MAX_LEN 8192
-//#define MAX_LINE_LEN 1024 //for later better, data structure implementation.
-#define MAX_PATH_LEN 256
+#define MAX_PATH_LEN 256 //make it more safe later
+#define STARTING_TEXT_LINES 8
+#define STARTING_LINE_LEN 32
 
 #define FULL_SCREEN_REFRESH "\e[2J\e[H" // Defines escape code sequences that refreshes screen and moves cursor to terminal's default top-left position
 #define REFRESH_ABOVE_STATUS_BAR "\e[2A\e[1J\e[H" // Moves cursor 2 lines up, refreshes from cursor to beginning of terminal default position (X: 1, Y: 1) (top-left of window) and places terminal's cursor there.
@@ -33,7 +33,7 @@ int tty_fd;
 //                            "---\r\nCTRL+S save | CTRL+O open | CTRL+N new | CTRL+Q exit"
 #define STATUS_BAR_TEXT_SHORT "---\r\n\e[1m\e[3mCTRL+S\e[0m save | \e[1m\e[3mCTRL+O\e[0m open | \e[1m\e[3mCTRL+N\e[0m new | \e[1m\e[3mCTRL+Q\e[0m exit" // Prints help/"tutorial" info on the bottom status bar
 
-int key_handling(char curr_path[], char c, char text[], int *count, int lite_mode_flag);
+int key_handling(char curr_path[], char c, char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines, int lite_mode_flag);
 
 int open_new_file_logic(char text[], int *count);
 int open_file_logic(char *path, char text[], int* count);
@@ -175,7 +175,7 @@ int open_file_logic(char curr_path[], char text[], int* count){
     printf(SAVE_CURSOR_POS);
     while(1){
         if (read(tty_fd, &c, 1) == 1) {
-            key_handling(curr_path, c, new_path, &temp_count, 1);
+            //key_handling(curr_path, c, new_path, &temp_count, 1);
             printf(REFRESH_ENTIRE_LINE);
             printf(RESTORE_CURSOR_POS);
             printf("%s", new_path); // printing currently written path name's text
@@ -192,7 +192,7 @@ int open_file_logic(char curr_path[], char text[], int* count){
         return -1;
     }
 
-    ssize_t bytes_read = read(fd, text, TEXT_MAX_LEN - 1);
+    /*ssize_t bytes_read = read(fd, text, TEXT_MAX_LEN - 1);
     if (bytes_read == -1) {
         perror("read");
         close(fd);
@@ -201,7 +201,7 @@ int open_file_logic(char curr_path[], char text[], int* count){
 
     text[bytes_read] = '\0';
     *count = (int)bytes_read;
-    strcpy(curr_path, new_path);
+    strcpy(curr_path, new_path);*/
 
     close(fd);
     file_opened_flag = 1;
@@ -218,7 +218,7 @@ int save_file_logic(char curr_path[], char text[], int* count){
         printf(SAVE_CURSOR_POS);
         while(1){
             if (read(tty_fd, &c, 1) == 1) {
-                key_handling(curr_path, c, curr_path, &temp_count, 1);
+                //key_handling(curr_path, c, curr_path, &temp_count, 1);
                 printf(REFRESH_ENTIRE_LINE);
                 printf(RESTORE_CURSOR_POS);
                 printf("%s", curr_path); // printing currently written path name's text
@@ -260,19 +260,19 @@ int file_logic(){
 
 }
 
-//                                                                  v lite mode is used for key handling in options like: setting file name to save it etc. text areas
-int key_handling(char curr_path[], char c, char text[], int *count, int lite_mode_flag){
+//                                                 lite mode is used for key handling in options like: setting file name to save it etc. text areas v 
+int key_handling(char curr_path[], char c, char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines, int lite_mode_flag){
 
     if(lite_mode_flag == 0){ //if lite mode isn't present handle all the special characters as well.
 
         if (c == 19) { // CTRL + S (saves to a file)
 
-            save_file_logic(curr_path, text, count);
+            //save_file_logic(curr_path, text, count);
             return 0;
 
         }else if (c == 15) { // CTRL + O (opens a file)
 
-            open_file_logic(curr_path, text, count);
+            //open_file_logic(curr_path, text, count);
             return 0;
 
         }else if (c == 17) { // CTRL + Q (quits program)
@@ -281,16 +281,39 @@ int key_handling(char curr_path[], char c, char text[], int *count, int lite_mod
 
         }else if (c == 14) { // CTRL + N (Opens new file)
 
-            open_new_file_logic(text, count);
+            //open_new_file_logic(text, count);
             return 0;
 
         }else if (c == 13 /*CR*/) { // <- "return" handling
 
-            text[*count] = '\r';
-            (*count)++;
-            text[*count] = '\n'; //to obtain "enter" in raw mode we need to add \n at the end of \r (13) ("enter" in canonical mode), becase \r\n is THE RAW newline.
-            (*count)++;
-            text[*count + 1] = '\0';
+            // Adding (allocating more) lines to text_lines line array in case it's needed.
+            if(*line_number >= (*line_count)-1){// Safety measurements
+                char **extended_text_lines = realloc(*text_lines, (*line_count * 2) * sizeof(char*));
+                int *extended_char_count_in_lines = realloc(*char_count_in_lines, (*line_count * 2) * sizeof(int));
+                if (extended_text_lines == NULL){ // Safety measurements
+                    perror("unable to perform realloc for extended_text_lines!");
+                    exit(1);
+                    // Maybe do some kind of emergency save later here?
+                }else if (extended_char_count_in_lines == NULL){ // Safety measurements
+                    perror("unable to perform realloc for extended_text_lines!");
+                    exit(1);
+                }else{
+
+                    *text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
+                    *char_count_in_lines = extended_char_count_in_lines;
+                    for(int i = *line_count; i < *line_count * 2; i++){
+                        *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
+                        *(*char_count_in_lines+i) = STARTING_LINE_LEN;
+                    }
+                        //!!!!! LATER REMEMBER LINES CAN HAVE DIFFERENT LENGTHS AND CHECK FOR THAT !!!!!
+                    *line_count *= 2;
+                }
+            }
+
+            *line_number += 1;
+            *char_number = 0;
+
+            (*text_lines)[*line_number][*char_number] = '\0';
             
             return 0;
 
@@ -298,14 +321,11 @@ int key_handling(char curr_path[], char c, char text[], int *count, int lite_mod
 
     }
 
-    if (c == 127 /*DEL*/ && *count >= 1) { // <- DEL ("backspace") handling
+    //                      v do better other lines handling later (?)
+    if (c == 127 /*DEL*/ && *char_number >= 1) { // <- DEL ("backspace") handling
 
-        text[*count] = '\0'; //deleting the character that was before delete (there)
-        (*count)--;
-        if(text[*count] == '\r'){ //in case that "character" was actually "return" (enter/CRLF ("newline")).
-            text[*count] = '\0';
-            (*count)--;
-        }
+        (*text_lines)[*line_number][*char_number] = '\0'; //deleting the character that was before delete (there)
+        *char_number -= 1;
 
         was_last_char_backsp = 1;
 
@@ -315,14 +335,33 @@ int key_handling(char curr_path[], char c, char text[], int *count, int lite_mod
         return 0;
     }
 
-    text[*count] = c;
-    (*count)++;
-    text[*count] = '\0';
+    (*text_lines)[*line_number][*char_number] = c;
+
+    //We need to do both!!! Increase size (add more chars) and change the value for it
+    //Remember to add entry while adding new lines as well!!!
+    if(*char_number >= *(*char_count_in_lines + *line_number) - 1){// Safety measurements     or: *(*char_count_in_lines + *line_number) * 2
+        char *extended_char_line = realloc(*(*text_lines + *line_number), (*(*char_count_in_lines + *line_number) * 2) * sizeof(char));
+        //nullify the new chars
+        if (extended_char_line == NULL){ // Safety measurements
+            perror("unable to perform realloc!");
+            exit(1);
+            // Maybe do some kind of emergency save later here?
+        }else{
+
+            *(*text_lines + *line_number) = extended_char_line; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
+            for(int i = (*char_count_in_lines)[*line_number]; i < (*char_count_in_lines)[*line_number] * 2; i++)
+                (*text_lines)[*line_number][i] = '\0'; // Each line 128 characters by default.
+                //memncpy would be easier tbh (?) !!!
+            (*char_count_in_lines)[*line_number] *= 2;
+        }
+    }
+    *char_number += 1; // handling here too!!!
+    (*text_lines)[*line_number][*char_number] = '\0';
 
     return 0;
 }
 
-int print_logic(struct winsize *ws, char curr_path[], char text[]){ // The editor's main printing/render logic
+int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int line_count){ // The editor's main printing/render logic
 
     if(window_resized == 1){
         get_window_size(ws);
@@ -356,7 +395,8 @@ int print_logic(struct winsize *ws, char curr_path[], char text[]){ // The edito
         printf(REFRESH_ABOVE_STATUS_BAR);
 
         //Printing proper editor's main text:
-        printf("%s", text);
+        for(int i = 0; i < line_count; i++)
+            printf("%s\r\n", text_lines[i]);
 
         if(was_last_char_backsp){
             printf(CURSOR_MOVE_1_COL_LEFT);
@@ -373,7 +413,19 @@ int main(void) {
 
     printf(FULL_SCREEN_REFRESH); // Initial screen refresh
 
-    char text[TEXT_MAX_LEN]; // Current editor's text
+    int line_count = STARTING_TEXT_LINES;
+    int curr_line_num = 0;
+    int curr_char_num = 0; 
+
+    //Change first init to malloc maybe (to optimize/save performance)?
+    char **text_lines = calloc(line_count, sizeof(char*)); // Start with 128 lines
+    int *char_count_in_lines = calloc(line_count, sizeof(int)); // dynamic table of characters amount in given lines
+    // Think whether the data structure wouldn't be a better idea later
+    for(int i = 0; i < line_count; i++){
+        *(text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
+        *(char_count_in_lines+i) = STARTING_LINE_LEN;
+    }
+
     int count = 0; // Current editor's text length
     char curr_path[MAX_PATH_LEN] = ""; // Current file path
     setbuf(stdout, NULL);
@@ -384,7 +436,7 @@ int main(void) {
 
     while (1) {
 
-        print_logic(ws, curr_path, text);
+        print_logic(ws, curr_path, text_lines, line_count);
 
         if (read(tty_fd, &c, 1) == 1) {
 
@@ -397,7 +449,7 @@ int main(void) {
 
             }else{
 
-                if(key_handling(curr_path, c, text, &count, 0) == -1) // Normally doesn't return -1, so if that's the case then:
+                if(key_handling(curr_path, c, &text_lines, &curr_line_num, &curr_char_num, &line_count, &char_count_in_lines, 0) == -1) // Normally doesn't return -1, so if that's the case then:
                     break; //Exits the program
                 
             }
