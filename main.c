@@ -439,13 +439,20 @@ int key_handling(char curr_path[], char c, char ***text_lines, int *line_number,
 
     }
 
-    //                      v do better other lines handling later (?)
-    if (c == 127 /*DEL*/ && *char_number >= 1) { // <- DEL ("backspace") handling
+    if (c == 127 /*DEL*/) { // <- DEL ("backspace") handling
 
-        (*text_lines)[*line_number][*char_number] = '\0'; //deleting the character that was before delete (there)
-        *char_number -= 1;
+        (*text_lines)[*line_number][*char_number] = '\0';
 
-        was_last_char_backsp = 1;
+        if(*char_number == 0 && *line_number > 0){
+            *line_number -= 1;
+            *char_number = strlen((*text_lines)[*line_number]);
+        }else if(*char_number == 0 && *line_number == 0){
+            ;
+        }else{
+            *char_number -= 1;
+        }
+        
+        //was_last_char_backsp = 1;
 
         return 0;
 
