@@ -48,6 +48,8 @@ int file_saved_flag = 0;
 //- Valid text scrolling (status bar always present) (!!!!!)
 //- Proper arrow keys handling and inserting text in the middle/beginning of the text (more work here) (!!!!!)
 //  Probably first switch to array of lines and then to gap buffer or piece table
+//- FIX BACKSPACE FOR NEW DATA STRUCTURE
+//- Later encapsulate text lines and line length growing in functions! (the realloc fragment repeats 2 times)
 
 void disable_raw_mode() {
     if (tcsetattr(tty_fd, TCSAFLUSH, &original_termios) == -1) {
@@ -218,26 +220,97 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
     input_file_name_logic(curr_path);
 
     int fd = open(curr_path, O_RDONLY);
-    if (fd == -1) {
+    if (fd < 0) {
         perror("open");
         return -1;
     }
 
-    int total_size;
+    // Freeing text_lines container contents
+    for(int i = 0; i < *line_count; i++){
+        free(*(*text_lines+i));
+    }
+    free(*text_lines);
+    // Freeing char_count_in_lines contents
+    free(*char_count_in_lines);
 
-    /*for(int i = 0; i < )
-    
-    //Can be pretty unsafe, check later
-    ssize_t bytes_read = read(fd, text, TEXT_MAX_LEN - 1);
-    if (bytes_read == -1) {
-        perror("read");
-        close(fd);
-        return -1;
+    *line_count = STARTING_TEXT_LINES;
+
+    *text_lines = malloc(*line_count * sizeof(char*));
+    *char_count_in_lines = malloc(*line_count * sizeof(int)); // dynamic table of characters amount in given lines
+    for(int i = 0; i < *line_count; i++){
+        *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
+        *(*char_count_in_lines+i) = STARTING_LINE_LEN;
     }
 
-    text[bytes_read] = '\0';
-    *count = (int)bytes_read;
-    strcpy(curr_path, new_path);*/
+    char buffer[1024];
+    ssize_t bytes_read;
+
+    *char_number = 0;
+    *line_number = 0;
+
+    while ((bytes_read = read(fd, buffer, sizeof(buffer))) > 0) {
+
+        for (int i = 0; i < bytes_read; i++) {
+            char c = buffer[i];
+
+            // New line
+            if (c == '\n') {
+                (*text_lines)[*line_number][*char_number] = '\0';
+                //same as: *(*(*text_lines + line) + col);
+                *line_number += 1;
+                *char_number = 0;
+
+                if(*line_number >= *line_count - 1){
+
+                    char **extended_text_lines = realloc(*text_lines, (*line_count * 2) * sizeof(char*));
+                    int *extended_char_count_in_lines = realloc(*char_count_in_lines, (*line_count * 2) * sizeof(int));
+                    if (extended_text_lines == NULL){ // Safety measurements
+                        perror("unable to perform realloc for extended_text_lines!");
+                        exit(1);
+                        // Maybe do some kind of emergency save later here?
+                    }else if (extended_char_count_in_lines == NULL){ // Safety measurements
+                        perror("unable to perform realloc for extended_text_lines!");
+                        exit(1);
+                    }else{
+
+                        *text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
+                        *char_count_in_lines = extended_char_count_in_lines;
+                        for(int i = *line_count; i < *line_count * 2; i++){
+                            *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
+                            *(*char_count_in_lines+i) = STARTING_LINE_LEN;
+                        }
+                            //!!!!! LATER REMEMBER LINES CAN HAVE DIFFERENT LENGTHS AND CHECK FOR THAT !!!!!
+                        *line_count *= 2;
+                    }
+                }
+
+            }else{
+                // Add char to current line
+
+                // grow line if needed
+                if (*char_number >= (*char_count_in_lines)[*line_number] - 1) {
+
+                    int new_size = (*char_count_in_lines)[*line_number] * 2;
+
+                    char *extended_line_size = realloc((*text_lines)[*line_number], new_size);
+                    if (extended_line_size == NULL) {
+                        perror("realloc");
+                        close(fd);
+                        return -1;
+                    }
+
+                    (*text_lines)[*line_number] = extended_line_size;
+                    (*char_count_in_lines)[*line_number] = new_size;
+                }
+
+                (*text_lines)[*line_number][*char_number] = c;
+                *char_number += 1;
+            }
+        }
+    }
+
+    // null-terminate last line
+    (*text_lines)[*line_number][*char_number] = '\0';
 
     close(fd);
     file_opened_flag = 1;
@@ -317,7 +390,7 @@ int key_handling(char curr_path[], char c, char ***text_lines, int *line_number,
 
         }else if (c == 15) { // CTRL + O (opens a file)
 
-            //open_file_logic(curr_path, text, count);
+            open_file_logic(curr_path, text_lines, line_number, char_number, line_count, char_count_in_lines);
             return 0;
 
         }else if (c == 17) { // CTRL + Q (quits program)
