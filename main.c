@@ -35,9 +35,9 @@ int tty_fd;
 
 int key_handling(char curr_path[], char c, char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines, int lite_mode_flag);
 
-int open_new_file_logic(char text[], int *count);
-int open_file_logic(char *path, char text[], int* count);
-int save_file_logic(char curr_path[], char text[], int* count);
+int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
+int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
+int save_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
 
 int was_last_char_backsp = 0; // if last character was backspace move cursor 1 pixel to the left to make it feel more responsive
 int file_opened_flag = 0;
@@ -147,7 +147,7 @@ int get_cursor_position(int fd, int *row, int *col) {
     return 0;
 }
 
-int open_new_file_logic(char text[], int *count){
+int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines){
     
     char temp_c;
     printf(FULL_SCREEN_REFRESH);
@@ -155,8 +155,25 @@ int open_new_file_logic(char text[], int *count){
     while(1){
         if(read(tty_fd, &temp_c, 1) == 1){
             if(temp_c == 'Y' || temp_c == 'y' || temp_c == '\r'){
-                memset(text, 0, *count);
-                *count = 0;
+                // Freeing text_lines container contents
+                for(int i = 0; i < *line_count; i++){
+                    free(*(*text_lines+i));
+                }
+                free(*text_lines);
+                // Freeing char_count_in_lines contents
+                free(*char_count_in_lines);
+                *text_lines = malloc(*line_count * sizeof(char*)); // Start with 128 lines
+                *char_count_in_lines = malloc(*line_count * sizeof(int)); // dynamic table of characters amount in given lines
+                // Think whether the data structure wouldn't be a better idea later
+                for(int i = 0; i < *line_count; i++){
+                    *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
+                    *(*char_count_in_lines+i) = STARTING_LINE_LEN;
+                }
+                *line_number = 0;
+                *char_number = 0;
+                *line_count = STARTING_TEXT_LINES;
+                //line_count being cached as zero'ed and allocated later faster would be nice (instead of freeing them and mallocing them later)
+                strcpy(curr_path, "");
                 break;
             }else if(temp_c == 'n'){
                 break;
@@ -165,34 +182,53 @@ int open_new_file_logic(char text[], int *count){
     }
 }
 
-int open_file_logic(char curr_path[], char text[], int* count){
+int input_file_name_logic(char curr_path[]){
 
-    printf(FULL_SCREEN_REFRESH);
-    printf("Please input the name or path and name of file you want to open (You can use relative or absolute path):\r\n\r\n");
     char c;
-    int temp_count = 0;
-    char new_path[MAX_PATH_LEN] = "";
+    int temp_char_number = 0;
+    int temp_line_number = 0;
+    int temp_line_count = 1;
+    int *temp_char_count_in_lines = calloc(temp_line_count, sizeof(int));
+    temp_char_count_in_lines[0] = STARTING_LINE_LEN;
+    char **new_path = calloc(temp_line_count, sizeof(char*)); //has only 1 line (and is handled as such), but made as char** for compatibility with key_handling() function.
+    *new_path = calloc(STARTING_LINE_LEN, sizeof(char));
     printf(SAVE_CURSOR_POS);
     while(1){
         if (read(tty_fd, &c, 1) == 1) {
-            //key_handling(curr_path, c, new_path, &temp_count, 1);
-            printf(REFRESH_ENTIRE_LINE);
+            key_handling(curr_path, c, &new_path, &temp_line_number, &temp_char_number, &temp_line_count, &temp_char_count_in_lines, 1);
+            printf(REFRESH_ENTIRE_LINE); // Can make it more effecting by refreshing only part of the line later.
             printf(RESTORE_CURSOR_POS);
-            printf("%s", new_path); // printing currently written path name's text
+            printf("%s", *new_path); // printing currently written path name's text
             if(c == 13 /*CR*/){ // if enter (return) is pressed stop waiting for more characters and accept the given file name
-                new_path[(*count)-1] = '\0'; //getting rid of CR character at the end of file name.
-                break;
+                curr_path[*temp_char_count_in_lines-1] = '\0'; //getting rid of CR character at the end of file name.
+                break; // Put it in key_handling function with flag included later.
             }
         }
     }
 
-    int fd = open(new_path, O_RDONLY);
+    strcpy(curr_path, *new_path);
+
+    return 0;
+}
+
+int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines){
+
+    printf(FULL_SCREEN_REFRESH);
+    printf("Please input the name or path and name of file you want to open (You can use relative or absolute path):\r\n\r\n");
+    input_file_name_logic(curr_path);
+
+    int fd = open(curr_path, O_RDONLY);
     if (fd == -1) {
         perror("open");
         return -1;
     }
 
-    /*ssize_t bytes_read = read(fd, text, TEXT_MAX_LEN - 1);
+    int total_size;
+
+    /*for(int i = 0; i < )
+    
+    //Can be pretty unsafe, check later
+    ssize_t bytes_read = read(fd, text, TEXT_MAX_LEN - 1);
     if (bytes_read == -1) {
         perror("read");
         close(fd);
@@ -208,26 +244,13 @@ int open_file_logic(char curr_path[], char text[], int* count){
     return 0;
 }
 
-int save_file_logic(char curr_path[], char text[], int* count){
+int save_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines){
 
     printf(FULL_SCREEN_REFRESH);
+    //  v Fix this! (file on previous path can be unintentionally overwritten) (fixed inside open_new)
     if(strcmp(curr_path, "") == 0){
         printf("Please input the saved file name or path and name (You can use relative or absolute path):\r\n\r\n");
-        char c;
-        int temp_count = 0;
-        printf(SAVE_CURSOR_POS);
-        while(1){
-            if (read(tty_fd, &c, 1) == 1) {
-                //key_handling(curr_path, c, curr_path, &temp_count, 1);
-                printf(REFRESH_ENTIRE_LINE);
-                printf(RESTORE_CURSOR_POS);
-                printf("%s", curr_path); // printing currently written path name's text
-                if(c == 13 /*CR*/){ // if enter (return) is pressed stop waiting for more characters and accept the given file name
-                    curr_path[(*count)-1] = '\0'; //getting rid of CR character at the end of file name.
-                    break;
-                }
-            }
-        }
+        input_file_name_logic(curr_path);
     }
 
     int fd = open(curr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -236,17 +259,39 @@ int save_file_logic(char curr_path[], char text[], int* count){
         return -1;
     }
 
-    ssize_t bytes_written = write(fd, text, *count);
-    if (bytes_written == -1) {
-        perror("write");
-        close(fd);
-        return -1;
+    int max_line_length = 1;
+
+    for(int i = 0; i < *line_count; i++){
+        if(*(*char_count_in_lines+i) > max_line_length)
+            max_line_length = *(*char_count_in_lines+i);
     }
 
-    if (bytes_written != *count) {
-        fprintf(stderr, "Partial write!\n");
-        close(fd);
-        return -1;
+    char buffer[max_line_length];
+
+    ssize_t bytes_written = 0;
+
+    for(int i = 0; i < *line_count; i++){
+
+        size_t len = strlen(*(*text_lines+i));
+
+        strcpy(buffer, *(*text_lines+i));
+        buffer[len] = '\n';
+        buffer[len+1] = '\0';
+        //buffer[strlen(*(*text_lines+i))] = '\n';
+        //buffer[strlen(*(*text_lines+i))+1] = '\0';
+
+        bytes_written = write(fd, buffer, strlen(buffer));
+        if (bytes_written == -1) {
+            perror("write");
+            close(fd);
+            return -1;
+        }
+        if (bytes_written != strlen(buffer)) {
+            fprintf(stderr, "Partial write!\n");
+            close(fd);
+            return -1;
+        }
+
     }
 
 
@@ -267,7 +312,7 @@ int key_handling(char curr_path[], char c, char ***text_lines, int *line_number,
 
         if (c == 19) { // CTRL + S (saves to a file)
 
-            //save_file_logic(curr_path, text, count);
+            save_file_logic(curr_path, text_lines, line_number, char_number, line_count, char_count_in_lines);
             return 0;
 
         }else if (c == 15) { // CTRL + O (opens a file)
@@ -281,7 +326,7 @@ int key_handling(char curr_path[], char c, char ***text_lines, int *line_number,
 
         }else if (c == 14) { // CTRL + N (Opens new file)
 
-            //open_new_file_logic(text, count);
+            open_new_file_logic(curr_path, text_lines, line_number, char_number, line_count, char_count_in_lines);
             return 0;
 
         }else if (c == 13 /*CR*/) { // <- "return" handling
@@ -392,6 +437,7 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
             else
                 printf(STATUS_BAR_TEXT_SHORT);
         }
+
         printf(REFRESH_ABOVE_STATUS_BAR);
 
         //Printing proper editor's main text:
@@ -418,8 +464,8 @@ int main(void) {
     int curr_char_num = 0; 
 
     //Change first init to malloc maybe (to optimize/save performance)?
-    char **text_lines = calloc(line_count, sizeof(char*)); // Start with 128 lines
-    int *char_count_in_lines = calloc(line_count, sizeof(int)); // dynamic table of characters amount in given lines
+    char **text_lines = malloc(line_count * sizeof(char*)); // Start with 128 lines
+    int *char_count_in_lines = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for characters in given lines
     // Think whether the data structure wouldn't be a better idea later
     for(int i = 0; i < line_count; i++){
         *(text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
