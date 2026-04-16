@@ -39,16 +39,13 @@ int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, 
 int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
 int save_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
 
-int was_last_char_backsp = 0; // if last character was backspace move cursor 1 pixel to the left to make it feel more responsive
 int file_opened_flag = 0;
 int file_saved_flag = 0;
 
 //TO DO:
-//- text with dynamic memory allocation?
 //- Valid text scrolling (status bar always present) (!!!!!)
 //- Proper arrow keys handling and inserting text in the middle/beginning of the text (more work here) (!!!!!)
 //  Probably first switch to array of lines and then to gap buffer or piece table
-//- FIX BACKSPACE FOR NEW DATA STRUCTURE
 //- Later encapsulate text lines and line length growing in functions! (the realloc fragment repeats 2 times)
 
 void disable_raw_mode() {
@@ -454,8 +451,6 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
         }else{
             *char_number -= 1;
         }
-        
-        //was_last_char_backsp = 1;
 
         return 0;
 
@@ -476,7 +471,24 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
                 }
                 break;
             case 66 /*B*/: // Arrow Down
-
+                int are_lines_empty = 1; 
+                for(int i = *line_number + 1; i < *line_count; i++){
+                    //Checking if all the proceeding lines are empty.
+                    //if that's the case prevent from descending down.
+                    if((*text_lines)[i][0] != '\0'){
+                        are_lines_empty = 0;
+                        break;
+                    }
+                }
+                if(are_lines_empty){
+                    break;
+                }
+                if(*line_number + 1 >= *line_count){
+                    ;
+                }else{
+                    *line_number += 1;
+                    *char_number = 0;
+                }
                 break;
             case 67 /*C*/: // Arrow Right
                 if(*char_number + 1 >= (*char_count_in_lines)[*line_number] || (*text_lines)[*line_number][*char_number + 1] == '\0'){
@@ -504,8 +516,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
     (*text_lines)[*line_number][*char_number] = c;
 
     //We need to do both!!! Increase size (add more chars) and change the value for it
-    //Remember to add entry while adding new lines as well!!!
-    if(*char_number >= *(*char_count_in_lines + *line_number) - 1){// Safety measurements     or: *(*char_count_in_lines + *line_number) * 2
+    if(*char_number >= *(*char_count_in_lines + *line_number) - 1){// Safety measurements
         char *extended_char_line = realloc(*(*text_lines + *line_number), (*(*char_count_in_lines + *line_number) * 2) * sizeof(char));
         //nullify the new chars
         if (extended_char_line == NULL){ // Safety measurements
@@ -567,10 +578,6 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
 
         printf("\e[%d;%dH", line_number + 1, char_number + 1); // Name or macro it in more sensible way later
 
-        if(was_last_char_backsp){
-            printf(CURSOR_MOVE_1_COL_LEFT);
-            was_last_char_backsp = 0;
-        }
     }
 }
 
@@ -586,12 +593,11 @@ int main(void) {
     int curr_line_num = 0;
     int curr_char_num = 0; 
 
-    //Change first init to malloc maybe (to optimize/save performance)?
-    char **text_lines = malloc(line_count * sizeof(char*)); // Start with 128 lines
+    char **text_lines = malloc(line_count * sizeof(char*));
     int *char_count_in_lines = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for characters in given lines
     // Think whether the data structure wouldn't be a better idea later
     for(int i = 0; i < line_count; i++){
-        *(text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
+        *(text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 32 characters by default.
         *(char_count_in_lines+i) = STARTING_LINE_LEN;
     }
 
