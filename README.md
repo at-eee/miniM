@@ -1,6 +1,8 @@
 # miniM
 Minimal low-level text editor that lets you work on files; build on and basing on termios and ANSI escape codes (ANSI control sequences)
 
+PROJECT IS STILL WORK IN PROGRESS!!!
+
 ## Early Simple Demos
 
 ### Example use
