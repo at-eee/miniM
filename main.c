@@ -41,6 +41,7 @@ int save_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
 
 int file_opened_flag = 0;
 int file_saved_flag = 0;
+int file_open_error_flag = 0;
 
 //TO DO:
 //- Valid text scrolling (status bar always present) (!!!!!)
@@ -222,6 +223,7 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
     int fd = open(curr_path, O_RDONLY);
     if (fd < 0) {
         perror("open");
+        file_open_error_flag = 1;
         return -1;
     }
 
@@ -538,7 +540,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
     return 0;
 }
 
-int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int line_number, int char_number, int line_count){ // The editor's main printing/render logic
+int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int line_number, int char_number, int* upper_screen_bond, int line_count){ // The editor's main printing/render logic
 
     if(window_resized == 1){
         get_window_size(ws);
@@ -549,7 +551,7 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
     if(DEBUG_MODE){}
     else{
         
-        //Infos at the bottom of the screen (bottom status bar). (change to macro function later?)
+        //Place cursor on the second to last line of terminal screen (bottom status bar). (change to macro function later?)
         printf("\e[%d;1;H", ws->ws_row-1);
         if(file_saved_flag){
 
@@ -561,6 +563,9 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
             printf("---\r\nFile \"%s\" opened successfully!", curr_path);
             file_opened_flag = 0;
             
+        }else if(file_open_error_flag){
+            printf("---\r\nFile \"%s\" not found or unable to open!", curr_path);
+            file_open_error_flag = 0;
         }else{
             if(ws->ws_col >= strlen(STATUS_BAR_TEXT_LONG) - 12*4) //12 is the number of special characters used for formatting (invis) all the "CTRL+" commands
                 printf(STATUS_BAR_TEXT_LONG);
@@ -573,11 +578,23 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
         printf(REFRESH_ABOVE_STATUS_BAR);
 
         //Printing proper editor's main text:
-        for(int i = 0; i < line_count; i++)
+        if(*upper_screen_bond == line_number){
+            if(line_number != 0)
+                *upper_screen_bond -= 1;
+        }else if(line_number-*upper_screen_bond > ws->ws_row-3){
+            *upper_screen_bond += 1;
+        }
+        //change it to: lower bond and *upper* bond of the screen
+        int limit = line_count - *upper_screen_bond;
+        if(limit > ws->ws_row-2)
+            limit = ws->ws_row-2;
+        for(int i = *upper_screen_bond; i < *upper_screen_bond+limit; i++)
             printf("%s\r\n", text_lines[i]);
 
-        printf("\e[%d;%dH", line_number + 1, char_number + 1); // Name or macro it in more sensible way later
-
+        // Place cursor at appropriate line/column
+        //printf("\e[%d;%dH", line_number + 1, char_number + 1); // Name or macro it in more sensible way later
+        // More relative/dynamic version of the above:
+        printf("\e[%d;%dH", line_number - *upper_screen_bond + 1, char_number + 1);
     }
 }
 
@@ -608,12 +625,14 @@ int main(void) {
     get_window_size(ws);
 
     char c;
-    char prev_c = '\0'; //stores previous character in order to check for escape sequences.
+    char prev_c = '\0'; // Stores previous character in order to check for escape sequences.
     int is_arrow_key = 0;
+
+    int upper_screen_bond = 0; // First (upper-most) line that is visible on the editor's screen/window.
 
     while (1) {
 
-        print_logic(ws, curr_path, text_lines, curr_line_num, curr_char_num, line_count);
+        print_logic(ws, curr_path, text_lines, curr_line_num, curr_char_num, &upper_screen_bond, line_count);
 
         if (read(tty_fd, &c, 1) == 1) {
 
