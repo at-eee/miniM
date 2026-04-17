@@ -535,7 +535,8 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
         }
     }
     *char_number += 1; // handling here too!!!
-    (*text_lines)[*line_number][*char_number] = '\0';
+    //It's by default filled with 0's so I think we can skip this to make insert mode of input more sensible.
+    //(*text_lines)[*line_number][*char_number] = '\0'; 
 
     return 0;
 }
