@@ -3,6 +3,19 @@ Minimal low-level text editor that lets you work on files; build on and basing o
 
 PROJECT IS STILL WORK IN PROGRESS!!!
 
+## Installation
+
+```
+git clone https://github.com/at-eee/miniM.git
+gcc main.c -o main.out
+```
+
+## Usage
+
+```
+./main.out
+```
+
 ## Early Simple Demos
 
 ### Example use
