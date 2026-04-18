@@ -1,9 +1,9 @@
 # miniM
 Minimal low-level (nano-like) text editor that lets you work on files; build on and basing on termios and ANSI escape codes (ANSI control sequences)
 
-Editor currently works in insert mode
+Editor currently only works in/supports overtype (text input method) mode (insert mode yet to come)
 
-PROJECT IS STILL WORK IN PROGRESS!!!
+Project is still WIP.
 
 ## Installation
 
