@@ -9,13 +9,14 @@ Project is still WIP.
 
 ```
 git clone https://github.com/at-eee/miniM.git
-gcc main.c -o main.out
+cd miniM
+gcc main.c -o miniM.out
 ```
 
 ## Usage
 
 ```
-./main.out
+./miniM.out
 ```
 
 ## Early Simple Demos

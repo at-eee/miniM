@@ -37,15 +37,13 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
 
 int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
 int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
-int save_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
+int save_file_logic(char curr_path[], const char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines);
 
 int file_opened_flag = 0;
 int file_saved_flag = 0;
 int file_open_error_flag = 0;
 
 //TO DO:
-//- Valid text scrolling (status bar always present) (!!!!!)
-//- Proper arrow keys handling and inserting text in the middle/beginning of the text (more work here) (!!!!!)
 //  Probably first switch to array of lines and then to gap buffer or piece table
 //- Later encapsulate text lines and line length growing in functions! (the realloc fragment repeats 2 times)
 
@@ -258,14 +256,13 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
             // New line
             if (c == '\n') {
                 (*text_lines)[*line_number][*char_number] = '\0';
-                //same as: *(*(*text_lines + line) + col);
                 *line_number += 1;
                 *char_number = 0;
 
                 if(*line_number >= *line_count - 1){
 
-                    char **extended_text_lines = realloc(*text_lines, (*line_count * 2) * sizeof(char*));
-                    int *extended_char_count_in_lines = realloc(*char_count_in_lines, (*line_count * 2) * sizeof(int));
+                    char **extended_text_lines = realloc(*text_lines, *line_count * 2 * sizeof(char*));
+                    int *extended_char_count_in_lines = realloc(*char_count_in_lines, *line_count * 2 * sizeof(int));
                     if (extended_text_lines == NULL){ // Safety measurements
                         perror("unable to perform realloc for extended_text_lines!");
                         exit(1);
@@ -319,7 +316,7 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
     return 0;
 }
 
-int save_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines){
+int save_file_logic(char curr_path[], const char ***text_lines, int *line_number, int *char_number, int *line_count, int **char_count_in_lines){
 
     printf(FULL_SCREEN_REFRESH);
     //  v Fix this! (file on previous path can be unintentionally overwritten) (fixed inside open_new)
@@ -387,7 +384,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
 
         if (c == 19) { // CTRL + S (saves to a file)
 
-            save_file_logic(curr_path, text_lines, line_number, char_number, line_count, char_count_in_lines);
+            save_file_logic(curr_path, (const char***)text_lines, line_number, char_number, line_count, char_count_in_lines);
             return 0;
 
         }else if (c == 15) { // CTRL + O (opens a file)
@@ -518,8 +515,8 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
     (*text_lines)[*line_number][*char_number] = c;
 
     //We need to do both!!! Increase size (add more chars) and change the value for it
-    if(*char_number >= *(*char_count_in_lines + *line_number) - 1){// Safety measurements
-        char *extended_char_line = realloc(*(*text_lines + *line_number), (*(*char_count_in_lines + *line_number) * 2) * sizeof(char));
+    if(*char_number >= (*char_count_in_lines)[*line_number] - 1){// Safety measurements
+        char *extended_char_line = realloc((*text_lines)[*line_number], (*char_count_in_lines)[*line_number] * 2 * sizeof(char));
         //nullify the new chars
         if (extended_char_line == NULL){ // Safety measurements
             perror("unable to perform realloc!");
@@ -527,7 +524,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
             // Maybe do some kind of emergency save later here?
         }else{
 
-            *(*text_lines + *line_number) = extended_char_line; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
+            (*text_lines)[*line_number] = extended_char_line; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
             for(int i = (*char_count_in_lines)[*line_number]; i < (*char_count_in_lines)[*line_number] * 2; i++)
                 (*text_lines)[*line_number][i] = '\0'; // Each line 128 characters by default.
                 //memncpy would be easier tbh (?) !!!
