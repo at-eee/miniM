@@ -39,6 +39,8 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
 int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts);
 int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts);
 int save_file_logic(char curr_path[], const char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts);
+int alloc_mem_for_text(char ***text_lines, int **allocated_char_counts, int **actual_char_counts, int line_count);
+int free_text_mem(char **text_lines, int *allocated_char_counts, int *actual_char_counts, int line_count);
 
 int file_opened_flag = 0;
 int file_saved_flag = 0;
@@ -46,7 +48,6 @@ int file_open_error_flag = 0;
 
 //TO DO:
 //  Probably first switch to array of lines and then to gap buffer or piece table
-//- Later encapsulate text lines and line length growing in functions! (the realloc fragment repeats 2 times)
 
 void disable_raw_mode() {
     if (tcsetattr(tty_fd, TCSAFLUSH, &original_termios) == -1) {
@@ -146,45 +147,6 @@ int get_cursor_position(int fd, int *row, int *col) {
     return 0;
 }
 
-int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts){
-    
-    char temp_c;
-    printf(FULL_SCREEN_REFRESH);
-    printf("Are you sure you wanna open new file? This will delete all unsaved progress on current file [Y/n]");
-    while(1){
-        if(read(tty_fd, &temp_c, 1) == 1){
-            if(temp_c == 'Y' || temp_c == 'y' || temp_c == '\r'){
-                // Freeing text_lines container contents
-                for(int i = 0; i < *line_count; i++){
-                    free(*(*text_lines+i));
-                }
-                free(*text_lines);
-                // Freeing allocated_char_counts contents
-                free(*allocated_char_counts);
-                // Freeing actual_char_counts contents.
-                free(*actual_char_counts);
-                *text_lines = malloc(*line_count * sizeof(char*)); // Start with 128 lines
-                *allocated_char_counts = malloc(*line_count * sizeof(int)); // dynamic table of characters amount in given lines
-                *actual_char_counts = malloc(*line_count * sizeof(int));
-                // Think whether the data structure wouldn't be a better idea later
-                for(int i = 0; i < *line_count; i++){
-                    *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
-                    *(*allocated_char_counts+i) = STARTING_LINE_LEN;
-                    *(*actual_char_counts+i) = 0;
-                }
-                *line_number = 0;
-                *char_number = 0;
-                *line_count = STARTING_TEXT_LINES;
-                //line_count being cached as zero'ed and allocated later faster would be nice (instead of freeing them and mallocing them later)
-                strcpy(curr_path, "");
-                break;
-            }else if(temp_c == 'n'){
-                break;
-            }
-        }
-    }
-}
-
 int input_file_name_logic(char curr_path[]){
 
     char c;
@@ -224,6 +186,36 @@ int input_file_name_logic(char curr_path[]){
     return 0;
 }
 
+int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts){
+    
+    char temp_c;
+    printf(FULL_SCREEN_REFRESH);
+    printf("Are you sure you wanna open new file? This will delete all unsaved progress on current file [Y/n]");
+    while(1){
+        if(read(tty_fd, &temp_c, 1) == 1){
+            if(temp_c == 'Y' || temp_c == 'y' || temp_c == '\r'){
+
+                *line_count = STARTING_TEXT_LINES;
+                
+                free_text_mem(*text_lines, *allocated_char_counts, *actual_char_counts, *line_count);
+
+                alloc_mem_for_text(text_lines, allocated_char_counts, actual_char_counts, *line_count);
+                
+                *line_number = 0;
+                *char_number = 0;
+                *line_count = STARTING_TEXT_LINES;
+                //line_count being cached as zero'ed and allocated later faster would be nice (instead of freeing them and mallocing them later)
+                strcpy(curr_path, "");
+                break;
+            }else if(temp_c == 'n'){
+                break;
+            }
+        }
+    }
+
+    return 0;
+}
+
 int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts){
 
     printf(FULL_SCREEN_REFRESH);
@@ -237,22 +229,10 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
         return -1;
     }
 
-    // Freeing text_lines container contents
-    for(int i = 0; i < *line_count; i++){
-        free(*(*text_lines+i));
-    }
-    free(*text_lines);
-    // Freeing allocated_char_counts contents
-    free(*allocated_char_counts);
+    free_text_mem(*text_lines, *allocated_char_counts, *actual_char_counts, *line_count);
 
     *line_count = STARTING_TEXT_LINES;
-
-    *text_lines = malloc(*line_count * sizeof(char*));
-    *allocated_char_counts = malloc(*line_count * sizeof(int)); // dynamic table of characters amount in given lines
-    for(int i = 0; i < *line_count; i++){
-        *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
-        *(*allocated_char_counts+i) = STARTING_LINE_LEN;
-    }
+    alloc_mem_for_text(text_lines, allocated_char_counts, actual_char_counts, *line_count);
 
     char buffer[BUFFER_LEN]; //Make it safer later!!!!!
     ssize_t bytes_read;
@@ -382,7 +362,6 @@ int save_file_logic(char curr_path[], const char ***text_lines, int *line_number
 
     }
 
-
     close(fd);
     file_saved_flag = 1;
     return 0;
@@ -459,7 +438,6 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
 
     if (c == 127 /*DEL*/) { // <- DEL ("backspace") handling
 
-
         if(*char_number < (*actual_char_counts)[*line_number]){
             for(int i = *char_number; i < (*actual_char_counts)[*line_number] - 1; i++){
                 (*text_lines)[*line_number][i] = (*text_lines)[*line_number][i+1];
@@ -480,6 +458,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
             ;
         }else{
             *char_number -= 1;
+            (*actual_char_counts)[*line_number] -= 1;
         }
 
         return 0;
@@ -629,6 +608,39 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
     }
 }
 
+// Allocates and initialized memory for text data.
+int alloc_mem_for_text(char ***text_lines, int **allocated_char_counts, int **actual_char_counts, int line_count){ 
+
+    *text_lines = malloc(line_count * sizeof(char*));
+    *allocated_char_counts = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for number of space allocated for characters in text lines.
+    *actual_char_counts = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for actual number of characters in text lines.
+    // Think whether the data structure wouldn't be a better idea later
+    if (!(*text_lines) || !(*allocated_char_counts) || !(*actual_char_counts)) {
+        perror("malloc failed");
+        return -1;
+    }
+    for(int i = 0; i < line_count; i++){
+        *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char));
+        *(*allocated_char_counts+i) = STARTING_LINE_LEN;
+        *(*actual_char_counts+i) = 0;
+    }
+
+}
+
+int free_text_mem(char **text_lines, int *allocated_char_counts, int *actual_char_counts, int line_count){
+
+    // Freeing text_lines container contents
+    for(int i = 0; i < line_count; i++){
+        free(*(text_lines+i));
+    }
+    free(text_lines);
+    // Freeing allocated_char_counts contents
+    free(allocated_char_counts);
+    // Freeing actual_char_counts contents.
+    free(actual_char_counts);
+
+}
+
 int main(void) {
 
     signal(SIGWINCH, handle_sigwinch); // Signal (works/is run asynchronously) in case terminal's window size changes.
@@ -641,17 +653,12 @@ int main(void) {
     int curr_line_num = 0;
     int curr_char_num = 0; 
 
-    char **text_lines = malloc(line_count * sizeof(char*));
-    int *allocated_char_counts = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for number of space allocated for characters in text lines.
-    int *actual_char_counts = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for actual number of characters in text lines.
-    // Think whether the data structure wouldn't be a better idea later
-    for(int i = 0; i < line_count; i++){
-        *(text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 32 characters by default.
-        *(allocated_char_counts+i) = STARTING_LINE_LEN;
-        *(actual_char_counts+i) = 0;
-    }
+    char **text_lines;
+    int *allocated_char_counts; // dynamic table of memory allocated for number of space allocated for characters in text lines.
+    int *actual_char_counts; // dynamic table of memory allocated for actual number of characters in text lines.
 
-    int count = 0; // Current editor's text length
+    alloc_mem_for_text(&text_lines, &allocated_char_counts, &actual_char_counts, line_count);
+
     char curr_path[MAX_PATH_LEN] = ""; // Current file path
     setbuf(stdout, NULL);
     struct winsize *ws = malloc(sizeof(struct winsize));
@@ -695,13 +702,6 @@ int main(void) {
 
     // Freeing window size data structure
     free(ws);
-    // Freeing text_lines container contents
-    for(int i = 0; i < line_count; i++){
-        free(*(text_lines+i));
-    }
-    free(text_lines);
-    // Freeing allocated_char_counts contents
-    free(allocated_char_counts);
-    free(actual_char_counts);
+    free_text_mem(text_lines, allocated_char_counts, actual_char_counts, line_count);
     return 0;
 }

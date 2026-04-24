@@ -10,7 +10,7 @@ Project is still WIP.
 ```
 git clone https://github.com/at-eee/miniM.git
 cd miniM
-gcc main.c -o miniM.out
+gcc ./src/main.c -o miniM.out
 ```
 
 ## Usage
