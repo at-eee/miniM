@@ -224,6 +224,58 @@ int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, 
     return 0;
 }
 
+// Reallocs memory for text_lines, allocated char_counts and actual_char_counts
+int grow_line_count(char ***text_lines, int *line_count, int **allocated_char_counts, int **actual_char_counts){
+
+    char **extended_text_lines = realloc(*text_lines, *line_count * 2 * sizeof(char*));
+    int *extended_allocated_char_counts = realloc(*allocated_char_counts, *line_count * 2 * sizeof(int));
+    int *extended_actual_char_counts = realloc(*actual_char_counts, *line_count * 2 * sizeof(int));
+    if (extended_text_lines == NULL){ // Safety measurements
+        perror("unable to perform realloc for extended_text_lines!");
+        exit(1);
+        //! Do some kind of emergency save later here
+    }else if (extended_allocated_char_counts == NULL){
+        perror("unable to perform realloc for extended_allocated_char_counts!");
+        exit(1);
+    }else if (extended_actual_char_counts == NULL){
+        perror("unable to perform realloc for extended_actual_char_counts!");
+        exit(1);
+    }else{
+
+        *text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
+        *allocated_char_counts = extended_allocated_char_counts;
+        *actual_char_counts = extended_actual_char_counts;
+        for(int i = *line_count; i < *line_count * 2; i++){
+            *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char));
+            *(*allocated_char_counts+i) = STARTING_LINE_LEN;
+            *(*actual_char_counts+i) = 0;
+        }
+
+        *line_count *= 2;
+    }
+
+}
+
+// Grows current line length/size (reallcos memory for it)
+int grow_curr_line_len(char ***text_lines, int *line_number, int **allocated_char_counts){
+
+    int new_size_count = (*allocated_char_counts)[*line_number] * 2;
+
+    char *extended_line_size = realloc((*text_lines)[*line_number], new_size_count);
+    if (extended_line_size == NULL) {
+        perror("realloc for growing line length!");
+        exit(1);
+        //! Do some kind of emergency save later here
+    }
+
+    (*text_lines)[*line_number] = extended_line_size;
+    for(int i = (*allocated_char_counts)[*line_number]; i < new_size_count; i++)
+        (*text_lines)[*line_number][i] = '\0';
+                // memcpy/memset would be more optimal tbh
+    (*allocated_char_counts)[*line_number] = new_size_count;
+
+}
+
 int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts){
 
     printf(FULL_SCREEN_REFRESH);
@@ -263,50 +315,19 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
 
                 if(*line_number >= *line_count - 1){
 
-                    char **extended_text_lines = realloc(*text_lines, *line_count * 2 * sizeof(char*));
-                    int *extended_allocated_char_counts = realloc(*allocated_char_counts, *line_count * 2 * sizeof(int));
-                    int *extended_actual_char_counts = realloc(*actual_char_counts, *line_count * 2 * sizeof(int));
-                    if (extended_text_lines == NULL){ // Safety measurements
-                        perror("unable to perform realloc for extended_text_lines!");
-                        exit(1);
-                        // Maybe do some kind of emergency save later here?
-                    }else if (extended_allocated_char_counts == NULL){ // Safety measurements
-                        perror("unable to perform realloc for extended_allocated_char_counts!");
-                        exit(1);
-                    }else{
+                    grow_line_count(text_lines, line_count, allocated_char_counts, actual_char_counts);
 
-                        *text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
-                        *allocated_char_counts = extended_allocated_char_counts;
-                        *actual_char_counts = extended_actual_char_counts;
-                        for(int i = *line_count; i < *line_count * 2; i++){
-                            *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char)); // Each line 128 characters by default.
-                            *(*allocated_char_counts+i) = STARTING_LINE_LEN;
-                            *(*actual_char_counts+i) = 0;
-                        }
-                            //!!!!! LATER REMEMBER LINES CAN HAVE DIFFERENT LENGTHS AND CHECK FOR THAT !!!!!
-                        *line_count *= 2;
-                    }
                 }
 
             }else{
-                // Add char to current line
 
                 // grow line if needed
                 if (*char_number >= (*allocated_char_counts)[*line_number] - 1) {
 
-                    int new_size_count = (*allocated_char_counts)[*line_number] * 2;
-
-                    char *extended_line_size = realloc((*text_lines)[*line_number], new_size_count);
-                    if (extended_line_size == NULL) {
-                        perror("realloc");
-                        close(fd);
-                        return -1;
-                    }
-
-                    (*text_lines)[*line_number] = extended_line_size;
-                    (*allocated_char_counts)[*line_number] = new_size_count;
+                    grow_curr_line_len(text_lines, line_number, allocated_char_counts);
                 }
 
+                // Add char to current line
                 (*text_lines)[*line_number][*char_number] = c;
                 *char_number += 1;
                 (*actual_char_counts)[*line_number] += 1;
@@ -414,29 +435,9 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
 
             // Adding (allocating more) lines to text_lines line array in case it's needed.
             if(*line_number >= (*line_count)-1){// Safety measurements
-                char **extended_text_lines = realloc(*text_lines, (*line_count * 2) * sizeof(char*));
-                int *extended_allocated_char_counts = realloc(*allocated_char_counts, (*line_count * 2) * sizeof(int));
-                int *extended_actual_char_counts = realloc(*actual_char_counts, *line_count * 2 * sizeof(int));
-                if (extended_text_lines == NULL){ // Safety measurements
-                    perror("unable to perform realloc for extended_text_lines!");
-                    exit(1);
-                    // Maybe do some kind of emergency save later here?
-                }else if (extended_allocated_char_counts == NULL){ // Safety measurements
-                    perror("unable to perform realloc for extended_text_lines!");
-                    exit(1);
-                }else{
+                
+                grow_line_count(text_lines, line_count, allocated_char_counts, actual_char_counts);
 
-                    *text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
-                    *allocated_char_counts = extended_allocated_char_counts;
-                    *actual_char_counts = extended_actual_char_counts;
-                    for(int i = *line_count; i < *line_count * 2; i++){
-                        *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char));
-                        *(*allocated_char_counts+i) = STARTING_LINE_LEN;
-                        *(*actual_char_counts+i) = 0;
-                    }
-                        //!!!!! LATER REMEMBER LINES CAN HAVE DIFFERENT LENGTHS AND CHECK FOR THAT !!!!!
-                    *line_count *= 2;
-                }
             }
 
             *line_number += 1;
@@ -554,20 +555,9 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
 
     //We need to do both!!! Increase size (add more chars) and change the value for it
     if((*actual_char_counts)[*line_number] >= (*allocated_char_counts)[*line_number] - 1){// Safety measurements
-        char *extended_char_line = realloc((*text_lines)[*line_number], (*allocated_char_counts)[*line_number] * 2 * sizeof(char));
-        //nullify the new chars
-        if (extended_char_line == NULL){ // Safety measurements
-            perror("unable to perform realloc!");
-            exit(1);
-            // Maybe do some kind of emergency save later here?
-        }else{
+        
+        grow_curr_line_len(text_lines, line_number, allocated_char_counts);
 
-            (*text_lines)[*line_number] = extended_char_line; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
-            for(int i = (*allocated_char_counts)[*line_number]; i < (*allocated_char_counts)[*line_number] * 2; i++)
-                (*text_lines)[*line_number][i] = '\0'; // Each line 128 characters by default.
-                //memncpy would be easier tbh (?) !!!
-            (*allocated_char_counts)[*line_number] *= 2;
-        }
     }
     
     *char_number += 1;
