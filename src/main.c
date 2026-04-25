@@ -48,8 +48,9 @@ int free_text_mem(char **text_lines, int *allocated_char_counts, int *actual_cha
 int file_opened_flag = 0;
 int file_saved_flag = 0;
 int file_open_error_flag = 0;
-int overtype_mode_flag = 0;
+int overtype_mode = 0;
 int input_mode_change_flag = 0; //typing mode (insert/overtype) change information flag
+int has_line_changed = 0; // Checks in case currently pointed at text line changed.
 
 //TO DO:
 // then switch to gap buffer or piece table
@@ -218,6 +219,8 @@ int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, 
         }
     }
 
+    printf(FULL_SCREEN_REFRESH);
+
     return 0;
 }
 
@@ -316,6 +319,9 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
 
     close(fd);
     file_opened_flag = 1;
+
+    printf(FULL_SCREEN_REFRESH);
+
     return 0;
 }
 
@@ -369,6 +375,9 @@ int save_file_logic(char curr_path[], const char ***text_lines, int *line_number
 
     close(fd);
     file_saved_flag = 1;
+
+    printf(FULL_SCREEN_REFRESH);
+
     return 0;
 }
 
@@ -431,6 +440,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
             }
 
             *line_number += 1;
+            has_line_changed = 1;
             *char_number = 0;
 
             (*text_lines)[*line_number][*char_number] = '\0';
@@ -458,6 +468,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
 
         if(*char_number == 0 && *line_number > 0){
             *line_number -= 1;
+            has_line_changed = 1;
             *char_number = strlen((*text_lines)[*line_number]);
         }else if(*char_number == 0 && *line_number == 0){
             ;
@@ -470,7 +481,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
 
     }else if(c == 9){ // CTRL + I (changes between insert and overtype modes)
 
-        overtype_mode_flag = overtype_mode_flag ^ 1;
+        overtype_mode = overtype_mode ^ 1;
         input_mode_change_flag = 1;
         return 0;
 
@@ -533,7 +544,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
         return 0;
     }
 
-    if(!overtype_mode_flag){
+    if(!overtype_mode){ // In case of insert input/typing mode.
         (*actual_char_counts)[*line_number] += 1;
         for(int i = (*actual_char_counts)[*line_number]; i > *char_number; i--){
             (*text_lines)[*line_number][i] = (*text_lines)[*line_number][i-1];
@@ -560,9 +571,10 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
     }
     
     *char_number += 1;
-    if(*char_number > (*actual_char_counts)[*line_number] && overtype_mode_flag)
+    if(*char_number > (*actual_char_counts)[*line_number] && overtype_mode) // In case of overtype mode (to not repat for insert input mode)
         (*actual_char_counts)[*line_number] += 1;
     
+    has_line_changed = 0;
 
     return 0;
 }
@@ -628,7 +640,7 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
             screen_scrolled = 1;
         }
         
-        if(screen_scrolled){
+        if(screen_scrolled || has_line_changed){
 
             printf(REFRESH_ABOVE_STATUS_BAR);
 

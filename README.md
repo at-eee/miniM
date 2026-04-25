@@ -1,5 +1,3 @@
-***Something got bugged again in the render/backspace logic and now I realised it, please resort to earlier commits in the meantime if you read this commit.***
-
 # miniM
 Minimal low-level (nano-like) text editor that lets you work on files; build on and basing on termios and ANSI escape codes (ANSI control sequences)
 
