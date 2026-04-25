@@ -445,8 +445,9 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_arrow_key, char 
                 (*text_lines)[*line_number][i] = (*text_lines)[*line_number][i+1];
             }
 
-            (*text_lines)[*line_number][(*allocated_char_counts)[*line_number]] = '\0';
+            *char_number -= 1;
             (*actual_char_counts)[*line_number] -= 1;
+            (*text_lines)[*line_number][(*actual_char_counts)[*line_number]] = '\0';
 
             return 0;
         }
