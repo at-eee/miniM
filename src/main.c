@@ -448,7 +448,6 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
                 (*text_lines)[*line_number][i] = (*text_lines)[*line_number][i+1];
             }
 
-            *char_number -= 1;
             (*actual_char_counts)[*line_number] -= 1;
             (*text_lines)[*line_number][(*actual_char_counts)[*line_number]] = '\0';
 
