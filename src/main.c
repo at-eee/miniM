@@ -31,11 +31,11 @@ int tty_fd;
 #define SAVE_CURSOR_POS "\e7"
 #define RESTORE_CURSOR_POS "\e8"
 //                           "---\r\nCTRL+S to save to the file | CTRL+O to open a file | CTRL+N to open new file | CTRL+Q to exit the program"
-#define STATUS_BAR_TEXT_LONG "---\r\n\e[1m\e[3mCTRL+S\e[0m to save to the file | \e[1m\e[3mCTRL+O\e[0m to open a file | \e[1m\e[3mCTRL+N\e[0m to open new file | \e[1m\e[3mCTRL+Q\e[0m to exit the program | \e[1m\e[3mCTRL+I\e[0m to change input mode"
+#define STATUS_BAR_TEXT_LONG "---\r\n\e[1m\e[3mCTRL+S\e[0m to save to the file | \e[1m\e[3mCTRL+O\e[0m to open a file | \e[1m\e[3mCTRL+N\e[0m to open new file | \e[1m\e[3mCTRL+Q\e[0m to exit the program | \e[1m\e[3mCTRL+T\e[0m to change input mode"
 //                      "---\r\nCTRL+S to save | CTRL+O to open file | CTRL+N to open new | CTRL+Q to exit"
-#define STATUS_BAR_TEXT "---\r\n\e[1m\e[3mCTRL+S\e[0m to save | \e[1m\e[3mCTRL+O\e[0m to open file | \e[1m\e[3mCTRL+N\e[0m to open new | \e[1m\e[3mCTRL+Q\e[0m to exit | \e[1m\e[3mCTRL+I\e[0m to change mode"
+#define STATUS_BAR_TEXT "---\r\n\e[1m\e[3mCTRL+S\e[0m to save | \e[1m\e[3mCTRL+O\e[0m to open file | \e[1m\e[3mCTRL+N\e[0m to open new | \e[1m\e[3mCTRL+Q\e[0m to exit | \e[1m\e[3mCTRL+T\e[0m to change mode"
 //                            "---\r\nCTRL+S save | CTRL+O open | CTRL+N new | CTRL+Q exit"
-#define STATUS_BAR_TEXT_SHORT "---\r\n\e[1m\e[3mCTRL+S\e[0m save | \e[1m\e[3mCTRL+O\e[0m open | \e[1m\e[3mCTRL+N\e[0m new | \e[1m\e[3mCTRL+Q\e[0m exit | \e[1m\e[3mCTRL+I\e[0m mode" // Prints help/"tutorial" info on the bottom status bar
+#define STATUS_BAR_TEXT_SHORT "---\r\n\e[1m\e[3mCTRL+S\e[0m save | \e[1m\e[3mCTRL+O\e[0m open | \e[1m\e[3mCTRL+N\e[0m new | \e[1m\e[3mCTRL+Q\e[0m exit | \e[1m\e[3mCTRL+T\e[0m mode" // Prints help/"tutorial" info on the bottom status bar
 
 int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts, int lite_mode_flag);
 
@@ -485,7 +485,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
 
         return 0;
 
-    }else if(c == 9){ // CTRL + I (changes between insert and overtype modes)
+    }else if(c == 20){ // CTRL + T (changes between insert and overtype modes)
 
         overtype_mode = overtype_mode ^ 1;
         input_mode_change_flag = 1;
@@ -607,7 +607,11 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
 
         }else if(input_mode_change_flag){
             
-            printf("---\r\nTyping mode changed");
+            printf(REFRESH_BELOW_CURSOR);
+            if(overtype_mode)
+                printf("---\r\nTyping mode changed (overwrite)");
+            else
+                printf("---\r\nTyping mode changed (insert)");
             input_mode_change_flag = 0;
 
         }else{
@@ -618,7 +622,11 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
             else
                 printf(STATUS_BAR_TEXT_SHORT);
 
-            window_resized = 0; //Temporarily here (solution for optimization)
+        }
+
+        if(window_resized){
+            return_to_editor_screen = 1;
+            window_resized = 0;
         }
 
         // Checks if screen has scrolled and if yes, refreshes whole editor's text space and prints whole text again
