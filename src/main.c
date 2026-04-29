@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include "ANSI_Escape_Sequences.h"
 
 #include <string.h>
 
@@ -17,25 +18,6 @@ int tty_fd;
 #define BUFFER_LEN 16384
 #define STARTING_TEXT_LINES 8
 #define STARTING_LINE_LEN 32
-
-#define FULL_SCREEN_REFRESH "\e[2J\e[H" // Defines escape code sequences that refreshes screen and moves cursor to terminal's default top-left position
-#define REFRESH_ABOVE_STATUS_BAR "\e[2A\e[1J\e[H" // Moves cursor 2 lines up, refreshes from cursor to beginning of terminal default position (X: 1, Y: 1) (top-left of window) and places terminal's cursor there.
-#define REFRESH_BELOW_CURSOR "\e[0J"
-#define CURSOR_JUMP_1_LINE_UP "\e[1A"
-#define CURSOR_MOVE_1_COL_LEFT "\e[1D"
-#define REFRESH_ENTIRE_LINE "\e[2K"
-#define REFRESH_TIL_LINE_END "\e[0K" // Erases from cursor to end of line.
-#define HIDE_CURSOR "\e[?25l"
-#define SHOW_CURSOR "\e[?25h"
-//#define CURSOR_MOVE_BEG_OF_LINE "\e[E\e[F"
-#define SAVE_CURSOR_POS "\e7"
-#define RESTORE_CURSOR_POS "\e8"
-//                           "---\r\nCTRL+S to save to the file | CTRL+O to open a file | CTRL+N to open new file | CTRL+Q to exit the program"
-#define STATUS_BAR_TEXT_LONG "---\r\n\e[1m\e[3mCTRL+S\e[0m to save to the file | \e[1m\e[3mCTRL+O\e[0m to open a file | \e[1m\e[3mCTRL+N\e[0m to open new file | \e[1m\e[3mCTRL+Q\e[0m to exit the program | \e[1m\e[3mCTRL+T\e[0m to change input mode"
-//                      "---\r\nCTRL+S to save | CTRL+O to open file | CTRL+N to open new | CTRL+Q to exit"
-#define STATUS_BAR_TEXT "---\r\n\e[1m\e[3mCTRL+S\e[0m to save | \e[1m\e[3mCTRL+O\e[0m to open file | \e[1m\e[3mCTRL+N\e[0m to open new | \e[1m\e[3mCTRL+Q\e[0m to exit | \e[1m\e[3mCTRL+T\e[0m to change mode"
-//                            "---\r\nCTRL+S save | CTRL+O open | CTRL+N new | CTRL+Q exit"
-#define STATUS_BAR_TEXT_SHORT "---\r\n\e[1m\e[3mCTRL+S\e[0m save | \e[1m\e[3mCTRL+O\e[0m open | \e[1m\e[3mCTRL+N\e[0m new | \e[1m\e[3mCTRL+Q\e[0m exit | \e[1m\e[3mCTRL+T\e[0m mode" // Prints help/"tutorial" info on the bottom status bar
 
 int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts, int lite_mode_flag);
 
@@ -256,6 +238,7 @@ int grow_line_count(char ***text_lines, int *line_count, int **allocated_char_co
         *line_count *= 2;
     }
 
+    return 0;
 }
 
 // Grows current line length/size (reallcos memory for it)
@@ -276,6 +259,7 @@ int grow_curr_line_len(char ***text_lines, int *line_number, int **allocated_cha
                 // memcpy/memset would be more optimal tbh
     (*allocated_char_counts)[*line_number] = new_size_count;
 
+    return 0;
 }
 
 int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts){
@@ -362,6 +346,7 @@ int save_file_logic(char curr_path[], const char ***text_lines, int *line_number
     int fd = open(curr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd == -1) {
         perror("open");
+        return_to_editor_screen = 1;
         return -1;
     }
 
@@ -408,9 +393,9 @@ int save_file_logic(char curr_path[], const char ***text_lines, int *line_number
 }
 
 
-int file_logic(){
+/*int file_logic(){
 
-}
+}*/
 
 //                                                 lite mode is used for key handling in options like: setting file name to save it etc. text areas v 
 int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts, int lite_mode_flag){
@@ -534,7 +519,7 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
                 }
                 break;
             case 67 /*C*/: // Arrow Right
-		// ALLOW FOR CURSOR TO BE AT THE END OF FILE
+		        // ALLOW FOR CURSOR TO BE AT THE END OF FILE
                 if(*char_number + 1 >= (*allocated_char_counts)[*line_number] || (*text_lines)[*line_number][*char_number] == '\0'){
                     ;
                 }else{
@@ -682,6 +667,8 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
 
         printf(SHOW_CURSOR);
     }
+
+    return 0;
 }
 
 // Allocates and initialized memory for text data.
@@ -701,6 +688,7 @@ int alloc_mem_for_text(char ***text_lines, int **allocated_char_counts, int **ac
         *(*actual_char_counts+i) = 0;
     }
 
+    return 0;
 }
 
 int free_text_mem(char **text_lines, int *allocated_char_counts, int *actual_char_counts, int line_count){
@@ -715,6 +703,7 @@ int free_text_mem(char **text_lines, int *allocated_char_counts, int *actual_cha
     // Freeing actual_char_counts contents.
     free(actual_char_counts);
 
+    return 0;
 }
 
 int main(void) {
