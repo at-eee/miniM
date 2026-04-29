@@ -9,9 +9,6 @@
 
 #include <string.h>
 
-static struct termios original_termios;
-int tty_fd;
-
 #define DEBUG_MODE 0
 
 #define MAX_PATH_LEN 256 //make it more safe later
@@ -19,13 +16,30 @@ int tty_fd;
 #define STARTING_TEXT_LINES 8
 #define STARTING_LINE_LEN 32
 
-int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts, int lite_mode_flag);
+static struct termios original_termios;
+int tty_fd;
 
-int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts);
-int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts);
-int save_file_logic(char curr_path[], const char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts);
-int alloc_mem_for_text(char ***text_lines, int **allocated_char_counts, int **actual_char_counts, int line_count);
-int free_text_mem(char **text_lines, int *allocated_char_counts, int *actual_char_counts, int line_count);
+struct editor_state{
+    char **text_lines;
+    int *allocated_char_counts;
+    int *actual_char_counts;
+    int line_count;
+    int line_number;
+    int char_number;
+    int upper_screen_bond;
+    char c;
+    char prev_c;
+    char is_CSI;
+    char curr_path[MAX_PATH_LEN];
+};
+
+int key_handling(struct editor_state *e, int lite_mode_flag);
+
+int open_new_file_logic(struct editor_state *e);
+int open_file_logic(struct editor_state *e);
+int save_file_logic(struct editor_state *e);
+int alloc_mem_for_text(struct editor_state *e);
+int free_text_mem(struct editor_state *e);
 
 int file_opened_flag = 0;
 int file_saved_flag = 0;
@@ -136,46 +150,45 @@ int get_cursor_position(int fd, int *row, int *col) {
     return 0;
 }
 
-int input_file_name_logic(char curr_path[]){
+//int input_file_name_logic(char curr_path[]){
+int input_file_name_logic(struct editor_state *e){
 
-    char c;
-    char prev_c = '\0';
-    int is_CSI = 0;
-    int temp_char_number = 0;
-    int temp_line_number = 0;
-    int temp_line_count = 1;
-    int *temp_allocated_char_counts = calloc(temp_line_count, sizeof(int));
-    temp_allocated_char_counts[0] = STARTING_LINE_LEN;
-    int *temp_actual_char_count = calloc(temp_line_count, sizeof(int));
-    temp_actual_char_count[0] = 0;
-    char **new_path = calloc(temp_line_count, sizeof(char*)); //has only 1 line (and is handled as such), but made as char** for compatibility with key_handling() function.
-    *new_path = calloc(STARTING_LINE_LEN, sizeof(char));
+    struct editor_state e_temp;
+    strcpy(e_temp.curr_path, e->curr_path);
+    e_temp.prev_c = '\0';
+    e_temp.is_CSI = 0;
+    e_temp.char_number = 0;
+    e_temp.line_number = 0;
+    e_temp.line_count = 1;
+    e_temp.allocated_char_counts = calloc(e_temp.line_count, sizeof(int));
+    e_temp.allocated_char_counts[0] = STARTING_LINE_LEN;
+    e_temp.actual_char_counts = calloc(e_temp.line_count, sizeof(int));
+    e_temp.actual_char_counts[0] = 0;
+    e_temp.text_lines = calloc(e_temp.line_count, sizeof(char*)); //has only 1 line (and is handled as such), but made as char** for compatibility with key_handling() function.
+    e_temp.text_lines[0] = calloc(STARTING_LINE_LEN, sizeof(char));
     printf(SAVE_CURSOR_POS);
     while(1){
-        if (read(tty_fd, &c, 1) == 1) {
-            key_handling(curr_path, c, prev_c, &is_CSI, &new_path, &temp_line_number, &temp_char_number, &temp_line_count, &temp_allocated_char_counts, &temp_actual_char_count, 1);
-            prev_c = c;
+        if (read(tty_fd, &(e_temp.c), 1) == 1) {
+            key_handling(&e_temp, 1);
+            e_temp.prev_c = e_temp.c;
             printf(REFRESH_ENTIRE_LINE); // Can make it more effecting by refreshing only part of the line later.
             printf(RESTORE_CURSOR_POS);
-            printf("%s", *new_path); // printing currently written path name's text
-            if(c == 13 /*CR*/){ // if enter (return) is pressed stop waiting for more characters and accept the given file name
-                curr_path[*temp_allocated_char_counts-1] = '\0'; //getting rid of CR character at the end of file name.
+            printf("%s", e_temp.text_lines[0]); // printing currently written path name's text
+            if(e_temp.c == 13 /*CR*/){ // if enter (return) is pressed stop waiting for more characters and accept the given file name
+                e->curr_path[e_temp.allocated_char_counts[0] - 1] = '\0'; //getting rid of CR character at the end of file name.
                 break;
             }
         }
     }
 
-    strcpy(curr_path, *new_path);
+    strcpy(e->curr_path, e_temp.text_lines[0]);
 
-    free(temp_allocated_char_counts);
-    free(temp_actual_char_count);
-    free(*new_path);
-    free(new_path);
+    free_text_mem(&e_temp);
 
     return 0;
 }
 
-int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts){
+int open_new_file_logic(struct editor_state *e){
     
     char temp_c;
     printf(FULL_SCREEN_REFRESH);
@@ -184,17 +197,17 @@ int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, 
         if(read(tty_fd, &temp_c, 1) == 1){
             if(temp_c == 'Y' || temp_c == 'y' || temp_c == '\r'){
 
-                *line_count = STARTING_TEXT_LINES;
+                e->line_count = STARTING_TEXT_LINES;
                 
-                free_text_mem(*text_lines, *allocated_char_counts, *actual_char_counts, *line_count);
+                free_text_mem(e);
 
-                alloc_mem_for_text(text_lines, allocated_char_counts, actual_char_counts, *line_count);
+                alloc_mem_for_text(e);
                 
-                *line_number = 0;
-                *char_number = 0;
-                *line_count = STARTING_TEXT_LINES;
+                e->line_number = 0;
+                e->char_number = 0;
+                e->line_count = STARTING_TEXT_LINES;
                 //line_count being cached as zero'ed and allocated later faster would be nice (instead of freeing them and mallocing them later)
-                strcpy(curr_path, "");
+                strcpy(e->curr_path, "");
                 break;
             }else if(temp_c == 'n'){
                 break;
@@ -209,11 +222,11 @@ int open_new_file_logic(char curr_path[], char ***text_lines, int *line_number, 
 }
 
 // Reallocs memory for text_lines, allocated char_counts and actual_char_counts
-int grow_line_count(char ***text_lines, int *line_count, int **allocated_char_counts, int **actual_char_counts){
+int grow_line_count(struct editor_state *e){
 
-    char **extended_text_lines = realloc(*text_lines, *line_count * 2 * sizeof(char*));
-    int *extended_allocated_char_counts = realloc(*allocated_char_counts, *line_count * 2 * sizeof(int));
-    int *extended_actual_char_counts = realloc(*actual_char_counts, *line_count * 2 * sizeof(int));
+    char **extended_text_lines = realloc(e->text_lines, e->line_count * 2 * sizeof(char*));
+    int *extended_allocated_char_counts = realloc(e->allocated_char_counts, e->line_count * 2 * sizeof(int));
+    int *extended_actual_char_counts = realloc(e->actual_char_counts, e->line_count * 2 * sizeof(int));
     if (extended_text_lines == NULL){ // Safety measurements
         perror("unable to perform realloc for extended_text_lines!");
         exit(1);
@@ -226,49 +239,49 @@ int grow_line_count(char ***text_lines, int *line_count, int **allocated_char_co
         exit(1);
     }else{
 
-        *text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
-        *allocated_char_counts = extended_allocated_char_counts;
-        *actual_char_counts = extended_actual_char_counts;
-        for(int i = *line_count; i < *line_count * 2; i++){
-            *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char));
-            *(*allocated_char_counts+i) = STARTING_LINE_LEN;
-            *(*actual_char_counts+i) = 0;
+        e->text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
+        e->allocated_char_counts = extended_allocated_char_counts;
+        e->actual_char_counts = extended_actual_char_counts;
+        for(int i = e->line_count; i < e->line_count * 2; i++){
+            e->text_lines[i] = calloc(STARTING_LINE_LEN, sizeof(char));
+            e->allocated_char_counts[i] = STARTING_LINE_LEN;
+            e->actual_char_counts[i] = 0;
         }
 
-        *line_count *= 2;
+        e->line_count *= 2;
     }
 
     return 0;
 }
 
 // Grows current line length/size (reallcos memory for it)
-int grow_curr_line_len(char ***text_lines, int *line_number, int **allocated_char_counts){
+int grow_curr_line_len(struct editor_state *e){
 
-    int new_size_count = (*allocated_char_counts)[*line_number] * 2;
+    int new_size_count = e->allocated_char_counts[e->line_number] * 2;
 
-    char *extended_line_size = realloc((*text_lines)[*line_number], new_size_count);
+    char *extended_line_size = realloc(e->text_lines[e->line_number], new_size_count);
     if (extended_line_size == NULL) {
         perror("realloc for growing line length!");
         exit(1);
         //! Do some kind of emergency save later here
     }
 
-    (*text_lines)[*line_number] = extended_line_size;
-    for(int i = (*allocated_char_counts)[*line_number]; i < new_size_count; i++)
-        (*text_lines)[*line_number][i] = '\0';
+    e->text_lines[e->line_number] = extended_line_size;
+    for(int i = e->allocated_char_counts[e->line_number]; i < new_size_count; i++)
+        e->text_lines[e->line_number][i] = '\0';
                 // memcpy/memset would be more optimal tbh
-    (*allocated_char_counts)[*line_number] = new_size_count;
+    e->allocated_char_counts[e->line_number] = new_size_count;
 
     return 0;
 }
 
-int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts){
+int open_file_logic(struct editor_state *e){
 
     printf(FULL_SCREEN_REFRESH);
     printf("Please input the name or path and name of file you want to open (You can use relative or absolute path):\r\n\r\n");
-    input_file_name_logic(curr_path);
+    input_file_name_logic(e);
 
-    int fd = open(curr_path, O_RDONLY);
+    int fd = open(e->curr_path, O_RDONLY);
     if (fd < 0) {
         perror("open");
         file_open_error_flag = 1;
@@ -276,17 +289,17 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
         return -1;
     }
 
-    free_text_mem(*text_lines, *allocated_char_counts, *actual_char_counts, *line_count);
+    free_text_mem(e);
 
-    *line_count = STARTING_TEXT_LINES;
-    alloc_mem_for_text(text_lines, allocated_char_counts, actual_char_counts, *line_count);
+    e->line_count = STARTING_TEXT_LINES;
+    alloc_mem_for_text(e);
 
     char buffer[BUFFER_LEN]; //Make it safer later!!!!!
     ssize_t bytes_read;
 
-    *char_number = 0;
-    *line_number = 0;
-    (*actual_char_counts)[*line_number] = 0;
+    e->char_number = 0;
+    e->line_number = 0;
+    e->actual_char_counts[e->line_number] = 0;
 
     while ((bytes_read = read(fd, buffer, sizeof(buffer))) > 0) {
 
@@ -295,35 +308,35 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
 
             // New line
             if (c == '\n') {
-                (*text_lines)[*line_number][*char_number] = '\0';
-                *line_number += 1;
-                *char_number = 0;
-                (*actual_char_counts)[*line_number] = 0;
+                e->text_lines[e->line_number][e->char_number] = '\0';
+                e->line_number += 1;
+                e->char_number = 0;
+                e->actual_char_counts[e->line_number] = 0;
 
-                if(*line_number >= *line_count - 1){
+                if(e->line_number >= e->line_count - 1){
 
-                    grow_line_count(text_lines, line_count, allocated_char_counts, actual_char_counts);
+                    grow_line_count(e);
 
                 }
 
             }else{
 
                 // grow line if needed
-                if (*char_number >= (*allocated_char_counts)[*line_number] - 1) {
+                if (e->char_number >= e->allocated_char_counts[e->line_number] - 1) {
 
-                    grow_curr_line_len(text_lines, line_number, allocated_char_counts);
+                    grow_curr_line_len(e);
                 }
 
                 // Add char to current line
-                (*text_lines)[*line_number][*char_number] = c;
-                *char_number += 1;
-                (*actual_char_counts)[*line_number] += 1;
+                e->text_lines[e->line_number][e->char_number] = c;
+                e->char_number += 1;
+                e->actual_char_counts[e->line_number] += 1;
             }
         }
     }
 
     // null-terminate last line
-    (*text_lines)[*line_number][*char_number] = '\0';
+    e->text_lines[e->line_number][e->char_number] = '\0';
 
     close(fd);
     file_opened_flag = 1;
@@ -334,16 +347,16 @@ int open_file_logic(char curr_path[], char ***text_lines, int *line_number, int 
     return 0;
 }
 
-int save_file_logic(char curr_path[], const char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts){
+int save_file_logic(struct editor_state *e){
 
     printf(FULL_SCREEN_REFRESH);
 
-    if(strcmp(curr_path, "") == 0){
+    if(strcmp(e->curr_path, "") == 0){
         printf("Please input the saved file name or path and name (You can use relative or absolute path):\r\n\r\n");
-        input_file_name_logic(curr_path);
+        input_file_name_logic(e);
     }
 
-    int fd = open(curr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int fd = open(e->curr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd == -1) {
         perror("open");
         return_to_editor_screen = 1;
@@ -352,20 +365,20 @@ int save_file_logic(char curr_path[], const char ***text_lines, int *line_number
 
     int max_line_length = 1;
 
-    for(int i = 0; i < *line_count; i++){
-        if(*(*allocated_char_counts+i) > max_line_length)
-            max_line_length = *(*allocated_char_counts+i);
+    for(int i = 0; i < e->line_count; i++){
+        if(e->allocated_char_counts[i] > max_line_length)
+            max_line_length = e->allocated_char_counts[i];
     }
 
     char buffer[max_line_length];
 
     ssize_t bytes_written = 0;
 
-    for(int i = 0; i < *line_count; i++){
+    for(int i = 0; i < e->line_count; i++){
 
-        size_t len = strlen(*(*text_lines+i));
+        size_t len = strlen(e->text_lines[i]);
 
-        strcpy(buffer, *(*text_lines+i));
+        strcpy(buffer, e->text_lines[i]);
         buffer[len] = '\n';
         buffer[len+1] = '\0';
 
@@ -397,44 +410,44 @@ int save_file_logic(char curr_path[], const char ***text_lines, int *line_number
 
 }*/
 
-//                                                 lite mode is used for key handling in options like: setting file name to save it etc. text areas v 
-int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***text_lines, int *line_number, int *char_number, int *line_count, int **allocated_char_counts, int **actual_char_counts, int lite_mode_flag){
+//                                                  v lite mode is used for key handling in options like: setting file name to save it etc. text areas 
+int key_handling(struct editor_state *e, int lite_mode_flag){
 
     if(lite_mode_flag == 0){ //if lite mode isn't present handle all the special characters as well.
 
-        if (c == 19) { // CTRL + S (saves to a file)
+        if (e->c == 19) { // CTRL + S (saves to a file)
 
-            save_file_logic(curr_path, (const char***)text_lines, line_number, char_number, line_count, allocated_char_counts);
+            save_file_logic(e);
             return 0;
 
-        }else if (c == 15) { // CTRL + O (opens a file)
+        }else if (e->c == 15) { // CTRL + O (opens a file)
 
-            open_file_logic(curr_path, text_lines, line_number, char_number, line_count, allocated_char_counts, actual_char_counts);
+            open_file_logic(e);
             return 0;
 
-        }else if (c == 17) { // CTRL + Q (quits program)
+        }else if (e->c == 17) { // CTRL + Q (quits program)
 
             return -1; // Quit program
 
-        }else if (c == 14) { // CTRL + N (Opens new file)
+        }else if (e->c == 14) { // CTRL + N (Opens new file)
 
-            open_new_file_logic(curr_path, text_lines, line_number, char_number, line_count, allocated_char_counts, actual_char_counts);
+            open_new_file_logic(e);
             return 0;
 
-        }else if (c == 13 /*CR*/) { // "return" handling
+        }else if (e->c == 13 /*CR*/) { // "return" handling
 
             // Adding (allocating more) lines to text_lines line array in case it's needed.
-            if(*line_number >= (*line_count)-1){// Safety measurements
+            if(e->line_number >= e->line_count-1){// Safety measurements
                 
-                grow_line_count(text_lines, line_count, allocated_char_counts, actual_char_counts);
+                grow_line_count(e);
 
             }
 
-            *line_number += 1;
+            e->line_number += 1;
             has_line_changed = 1;
-            *char_number = 0;
+            e->char_number = 0;
 
-            (*text_lines)[*line_number][*char_number] = '\0';
+            e->text_lines[e->line_number][e->char_number] = '\0';
             
             return 0;
 
@@ -442,68 +455,68 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
 
     }
 
-    if (c == 127 /*DEL*/) { // <- DEL ("backspace") handling
+    if (e->c == 127 /*DEL*/) { // <- DEL ("backspace") handling
 
-        if(*char_number < (*actual_char_counts)[*line_number]){
+        if(e->char_number < e->actual_char_counts[e->line_number]){
 		// DELETE CHARACTER LEFT-SIDE OF CURSOR
-            for(int i = *char_number - 1; i < (*actual_char_counts)[*line_number] - 1; i++){
-                (*text_lines)[*line_number][i] = (*text_lines)[*line_number][i+1];
+            for(int i = e->char_number - 1; i < e->actual_char_counts[e->line_number] - 1; i++){
+                e->text_lines[e->line_number][i] = e->text_lines[e->line_number][i+1];
             }
 
-            (*actual_char_counts)[*line_number] -= 1;
-            (*text_lines)[*line_number][(*actual_char_counts)[*line_number]] = '\0';
+            e->actual_char_counts[e->line_number] -= 1;
+            e->text_lines[e->line_number][e->actual_char_counts[e->line_number]] = '\0';
 
 		// UPDATE CURSOR POSITION AFTER BACKSPACE
-                if (*char_number > 0) {
-                    *char_number -= 1;
+                if (e->char_number > 0) {
+                    e->char_number -= 1;
                 }
 
             return 0;
         }
 
-        (*text_lines)[*line_number][*char_number - 1] = '\0';
+        e->text_lines[e->line_number][e->char_number - 1] = '\0';
 
-        if(*char_number == 0 && *line_number > 0){
-            *line_number -= 1;
+        if(e->char_number == 0 && e->line_number > 0){
+            e->line_number -= 1;
             has_line_changed = 1;
-            *char_number = strlen((*text_lines)[*line_number]);
-        }else if(*char_number == 0 && *line_number == 0){
+            e->char_number = strlen(e->text_lines[e->line_number]);
+        }else if(e->char_number == 0 && e->line_number == 0){
             ;
         }else{
-            *char_number -= 1;
-            (*actual_char_counts)[*line_number] -= 1;
+            e->char_number -= 1;
+            (e->actual_char_counts)[e->line_number] -= 1;
         }
 
         return 0;
 
-    }else if(c == 20){ // CTRL + T (changes between insert and overtype modes)
+    }else if(e->c == 20){ // CTRL + T (changes between insert and overtype modes)
 
         overtype_mode = overtype_mode ^ 1;
         input_mode_change_flag = 1;
         return 0;
 
-    }else if(c == 91 /*[*/ && prev_c == 27 /*ESC*/){ // Checking for CSI (Control Sequence Introducer)
+    }else if(e->c == 91 /*[*/ && e->prev_c == 27 /*ESC*/){ // Checking for CSI (Control Sequence Introducer)
 
-        *is_CSI = 1;
+        e->is_CSI = 1;
         return 0;
 
-    }else if(*is_CSI){
+    }else if(e->is_CSI){
 
-        switch(c){ // Arrow keys
+        switch(e->c){ // Arrow keys
             case 65 /*A*/: // Arrow Up
-                if(*line_number <= 0){
+                if(e->line_number <= 0){
                     ;
                 }else{
-                    *line_number -= 1;
-                    *char_number = 0;
+                    e->line_number -= 1;
+                    e->char_number = 0;
                 }
                 break;
             case 66 /*B*/: // Arrow Down
                 int are_lines_empty = 1; 
-                for(int i = *line_number + 1; i < *line_count; i++){
+                for(int i = e->line_number + 1; i < e->line_count; i++){
                     //Checking if all the proceeding lines are empty.
                     //if that's the case prevent from descending down.
-                    if((*text_lines)[i][0] != '\0'){
+                    if(e->text_lines[i][0] != '\0'){
                         are_lines_empty = 0;
                         break;
                     }
@@ -511,62 +524,62 @@ int key_handling(char curr_path[], char c, char prev_c, int *is_CSI, char ***tex
                 if(are_lines_empty){
                     break;
                 }
-                if(*line_number + 1 >= *line_count){
+                if(e->line_number + 1 >= e->line_count){
                     ;
                 }else{
-                    *line_number += 1;
-                    *char_number = 0;
+                    e->line_number += 1;
+                    e->char_number = 0;
                 }
                 break;
             case 67 /*C*/: // Arrow Right
 		        // ALLOW FOR CURSOR TO BE AT THE END OF FILE
-                if(*char_number + 1 >= (*allocated_char_counts)[*line_number] || (*text_lines)[*line_number][*char_number] == '\0'){
+                if(e->char_number + 1 >= e->allocated_char_counts[e->line_number] || e->text_lines[e->line_number][e->char_number] == '\0'){
                     ;
                 }else{
-                    *char_number += 1;
+                    e->char_number += 1;
                 }
                 break;
             case 68 /*D*/: // Arrow Left
-                if(*char_number <= 0){
+                if(e->char_number <= 0){
                     ;
                 }else{
-                    *char_number -= 1;
+                    e->char_number -= 1;
                 }
                 break;
         }
 
-        *is_CSI = 0;
+        e->is_CSI = 0;
         return 0;
 
-    }else if(c < 32){ // Skipping other undefined non-printable characters
+    }else if(e->c < 32){ // Skipping other undefined non-printable characters
         return 0;
     }
 
     if(!overtype_mode){ // In case of insert input/typing mode.
-        (*actual_char_counts)[*line_number] += 1;
-        for(int i = (*actual_char_counts)[*line_number]; i > *char_number; i--){
-            (*text_lines)[*line_number][i] = (*text_lines)[*line_number][i-1];
+        e->actual_char_counts[e->line_number] += 1;
+        for(int i = e->actual_char_counts[e->line_number]; i > e->char_number; i--){
+            e->text_lines[e->line_number][i] = e->text_lines[e->line_number][i-1];
         }
     }
-    (*text_lines)[*line_number][*char_number] = c; // assigning new char
+    e->text_lines[e->line_number][e->char_number] = e->c; // assigning new char
 
     //We need to do both!!! Increase size (add more chars) and change the value for it
-    if((*actual_char_counts)[*line_number] >= (*allocated_char_counts)[*line_number] - 1){// Safety measurements
+    if((e->actual_char_counts)[e->line_number] >= (e->allocated_char_counts)[e->line_number] - 1){// Safety measurements
         
-        grow_curr_line_len(text_lines, line_number, allocated_char_counts);
+        grow_curr_line_len(e);
 
     }
     
-    *char_number += 1;
-    if(*char_number > (*actual_char_counts)[*line_number] && overtype_mode) // In case of overtype mode (to not repat for insert input mode)
-        (*actual_char_counts)[*line_number] += 1;
+    e->char_number += 1;
+    if(e->char_number > e->actual_char_counts[e->line_number] && overtype_mode) // In case of overtype mode (to not repat for insert input mode)
+        e->actual_char_counts[e->line_number] += 1;
     
     has_line_changed = 0;
 
     return 0;
 }
 
-int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int line_number, int char_number, int* upper_screen_bond, int line_count, int *actual_char_counts){ // The editor's main printing/render logic
+int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's main printing/render logic
 
     if(window_resized == 1){
         get_window_size(ws);
@@ -584,17 +597,17 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
         printf("\e[%d;1;H", ws->ws_row-1);
         if(file_saved_flag){
 
-            printf("---\r\nFile \"%s\" saved successfully!", curr_path);
+            printf("---\r\nFile \"%s\" saved successfully!", e->curr_path);
             file_saved_flag = 0;
 
         }else if(file_opened_flag){
 
-            printf("---\r\nFile \"%s\" opened successfully!", curr_path);
+            printf("---\r\nFile \"%s\" opened successfully!", e->curr_path);
             file_opened_flag = 0;
             
         }else if(file_open_error_flag){
 
-            printf("---\r\nFile \"%s\" not found or unable to open!", curr_path);
+            printf("---\r\nFile \"%s\" not found or unable to open!", e->curr_path);
             file_open_error_flag = 0;
 
         }else if(input_mode_change_flag){
@@ -625,13 +638,13 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
         int screen_scrolled = 0; 
 
         //Printing proper editor's main text:
-        if(*upper_screen_bond == line_number){
-            if(line_number != 0){
-                *upper_screen_bond -= 1;
+        if(e->upper_screen_bond == e->line_number){
+            if(e->line_number != 0){
+                e->upper_screen_bond -= 1;
                 screen_scrolled = 1;
             }
-        }else if(line_number-*upper_screen_bond > ws->ws_row-3){
-            *upper_screen_bond += 1;
+        }else if(e->line_number - e->upper_screen_bond > ws->ws_row-3){
+            e->upper_screen_bond += 1;
             screen_scrolled = 1;
         }
         
@@ -639,19 +652,19 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
 
             printf(REFRESH_ABOVE_STATUS_BAR);
 
-            int limit = line_count - *upper_screen_bond;
+            int limit = e->line_count - e->upper_screen_bond;
             if(limit > ws->ws_row-2)
                 limit = ws->ws_row-2;
-            for(int i = *upper_screen_bond; i < *upper_screen_bond+limit; i++)
-                printf("%s\r\n", text_lines[i]);
+            for(int i = e->upper_screen_bond; i < e->upper_screen_bond+limit; i++)
+                printf("%s\r\n", e->text_lines[i]);
 
             screen_scrolled = 0;
             return_to_editor_screen = 0;
 
         }else{
-            printf("\e[%d;1H", line_number - *upper_screen_bond + 1);
+            printf("\e[%d;1H", e->line_number - e->upper_screen_bond + 1);
             printf(REFRESH_ENTIRE_LINE);
-            printf("%s", text_lines[line_number]);
+            printf("%s", e->text_lines[e->line_number]);
             //v Make it work later !
             /*printf("\e[%d;%dH", line_number - *upper_screen_bond + 1, char_number + 1);
             printf(REFRESH_TIL_LINE_END);
@@ -663,7 +676,7 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
         // Place cursor at appropriate line/column
         //printf("\e[%d;%dH", line_number + 1, char_number + 1); // Name or macro it in more sensible way later
         // More relative/dynamic version of the above:
-        printf("\e[%d;%dH", line_number - *upper_screen_bond + 1, char_number + 1);
+        printf("\e[%d;%dH", e->line_number - e->upper_screen_bond + 1, e->char_number + 1);
 
         printf(SHOW_CURSOR);
     }
@@ -672,36 +685,36 @@ int print_logic(struct winsize *ws, char curr_path[], char **text_lines, int lin
 }
 
 // Allocates and initialized memory for text data.
-int alloc_mem_for_text(char ***text_lines, int **allocated_char_counts, int **actual_char_counts, int line_count){ 
+int alloc_mem_for_text(struct editor_state *e){ 
 
-    *text_lines = malloc(line_count * sizeof(char*));
-    *allocated_char_counts = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for number of space allocated for characters in text lines.
-    *actual_char_counts = malloc(line_count * sizeof(int)); // dynamic table of memory allocated for actual number of characters in text lines.
+    e->text_lines = malloc(e->line_count * sizeof(char*));
+    e->allocated_char_counts = malloc(e->line_count * sizeof(int)); // dynamic table of memory allocated for number of space allocated for characters in text lines.
+    e->actual_char_counts = malloc(e->line_count * sizeof(int)); // dynamic table of memory allocated for actual number of characters in text lines.
     // Think whether the data structure wouldn't be a better idea later
-    if (!(*text_lines) || !(*allocated_char_counts) || !(*actual_char_counts)) {
+    if (!(e->text_lines) || !(e->allocated_char_counts) || !(e->actual_char_counts)) {
         perror("malloc failed");
         return -1;
     }
-    for(int i = 0; i < line_count; i++){
-        *(*text_lines+i) = calloc(STARTING_LINE_LEN, sizeof(char));
-        *(*allocated_char_counts+i) = STARTING_LINE_LEN;
-        *(*actual_char_counts+i) = 0;
+    for(int i = 0; i < e->line_count; i++){
+        e->text_lines[i] = calloc(STARTING_LINE_LEN, sizeof(char)); //do check for calloc later.
+        e->allocated_char_counts[i] = STARTING_LINE_LEN;
+        e->actual_char_counts[i] = 0;
     }
 
     return 0;
 }
 
-int free_text_mem(char **text_lines, int *allocated_char_counts, int *actual_char_counts, int line_count){
+int free_text_mem(struct editor_state *e){
 
     // Freeing text_lines container contents
-    for(int i = 0; i < line_count; i++){
-        free(*(text_lines+i));
+    for(int i = 0; i < e->line_count; i++){
+        free(e->text_lines[i]);
     }
-    free(text_lines);
+    free(e->text_lines);
     // Freeing allocated_char_counts contents
-    free(allocated_char_counts);
+    free(e->allocated_char_counts);
     // Freeing actual_char_counts contents.
-    free(actual_char_counts);
+    free(e->actual_char_counts);
 
     return 0;
 }
@@ -714,47 +727,58 @@ int main(void) {
 
     printf(FULL_SCREEN_REFRESH); // Initial screen refresh
 
-    int line_count = STARTING_TEXT_LINES;
+    struct editor_state *e = malloc(sizeof(struct editor_state));
+
+    /*int line_count = STARTING_TEXT_LINES;
     int curr_line_num = 0;
-    int curr_char_num = 0; 
+    int curr_char_num = 0; */
+    e->line_count = STARTING_TEXT_LINES;
+    e->line_number = 0;
+    e->char_number = 0;
 
-    char **text_lines;
+    /*char **text_lines;
     int *allocated_char_counts; // dynamic table of memory allocated for number of space allocated for characters in text lines.
-    int *actual_char_counts; // dynamic table of memory allocated for actual number of characters in text lines.
+    int *actual_char_counts; // dynamic table of memory allocated for actual number of characters in text lines.*/
 
-    alloc_mem_for_text(&text_lines, &allocated_char_counts, &actual_char_counts, line_count);
+    alloc_mem_for_text(e);
 
-    char curr_path[MAX_PATH_LEN] = ""; // Current file path
+    //char curr_path[MAX_PATH_LEN] = ""; // Current file path
+    e->curr_path[0] = '\0';
     setbuf(stdout, NULL);
     struct winsize *ws = malloc(sizeof(struct winsize));
     get_window_size(ws);
 
-    char c;
+    /*char c;
     char prev_c = '\0'; // Stores previous character in order to check for escape sequences.
-    int is_CSI = 0; // is Control Sequence Introducer (ANSI)
+    int is_CSI = 0; // is Control Sequence Introducer (ANSI)*/
     //Is true (1), when control sequence introducer was present i.e: characters: '\e' followed by: '[' and then control sequence.
 
-    int upper_screen_bond = 0; // First (upper-most) line that is visible on the editor's screen/window.
+    e->prev_c = '\0'; // Stores previous character in order to check for escape sequences.
+    e->is_CSI = 0; // is Control Sequence Introducer (ANSI)
+    //Is true (1), when control sequence introducer was present i.e: characters: '\e' followed by: '[' and then control sequence.
+
+    //int upper_screen_bond = 0; // First (upper-most) line that is visible on the editor's screen/window.
+    e->upper_screen_bond = 0;
 
     while (1) {
 
-        print_logic(ws, curr_path, text_lines, curr_line_num, curr_char_num, &upper_screen_bond, line_count, actual_char_counts);
+        print_logic(ws, e);
 
-        if (read(tty_fd, &c, 1) == 1) {
+        if (read(tty_fd, &(e->c), 1) == 1) {
 
             if(DEBUG_MODE){
 
-                printf("You pressed: %c %d\r\n", c, c);
+                printf("You pressed: %c %d\r\n", e->c, e->c);
                 printf("Window size:\r\nrows: %d, cols: %d\r\n", ws->ws_row, ws->ws_col);
-                if(c == 'q') break;
+                if(e->c == 'q') break;
                 printf("===================\r\n");
 
             }else{
 
-                if(key_handling(curr_path, c, prev_c, &is_CSI, &text_lines, &curr_line_num, &curr_char_num, &line_count, &allocated_char_counts, &actual_char_counts, 0) == -1) // Normally doesn't return -1, so if that's the case then:
+                if(key_handling(e, 0) == -1) // Normally doesn't return -1, so if that's the case then:
                     break; //Exits the program
                 
-                prev_c = c;
+                e->prev_c = e->c;
                 
             }
         }
@@ -768,6 +792,6 @@ int main(void) {
 
     // Freeing window size data structure
     free(ws);
-    free_text_mem(text_lines, allocated_char_counts, actual_char_counts, line_count);
+    free_text_mem(e);
     return 0;
 }
