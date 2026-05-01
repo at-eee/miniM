@@ -326,6 +326,7 @@ int open_file_logic(struct editor_state *e){
             // New line
             if (c == '\n') {
                 e->text_lines[e->actual_last_line][e->char_number] = '\0';
+                e->line_number += 1;
                 e->actual_last_line += 1;
                 e->char_number = 0;
                 e->actual_char_counts[e->actual_last_line] = 0;
@@ -357,6 +358,7 @@ int open_file_logic(struct editor_state *e){
 
     close(fd);
     file_opened_flag = 1;
+    e->line_number = 0; //We return to beginning of the file.
 
     return 0;
 }
@@ -602,6 +604,46 @@ int key_handling(struct editor_state *e, int lite_mode_flag){
     return 0;
 }
 
+int print_status_bar(struct winsize *ws, struct editor_state *e){
+
+    // Place cursor on the second to last line of terminal screen (status bar).
+    CURSOR_MOVE_ROW(ws->ws_row-1);
+
+    if(file_saved_flag){
+
+        printf("---\r\nFile \"%s\" saved successfully!", e->curr_path);
+        file_saved_flag = 0;
+
+    }else if(file_opened_flag){
+
+        printf("---\r\nFile \"%s\" opened successfully!", e->curr_path);
+        file_opened_flag = 0;
+        
+    }else if(file_open_error_flag){
+
+        printf("---\r\nFile \"%s\" not found or unable to open!", e->curr_path);
+        file_open_error_flag = 0;
+
+    }else if(input_mode_change_flag){
+        
+        printf(REFRESH_BELOW_CURSOR);
+        if(overtype_mode)
+            printf("---\r\nTyping mode changed (overwrite)");
+        else
+            printf("---\r\nTyping mode changed (insert)");
+        input_mode_change_flag = 0;
+
+    }else{
+        if(ws->ws_col >= strlen(STATUS_BAR_TEXT_LONG) - 12*5) // 12 is the number of special characters used for formatting (invis) all the "CTRL+" commands
+            printf(STATUS_BAR_TEXT_LONG);
+        else if(ws->ws_col >= strlen(STATUS_BAR_TEXT) - 12*5)
+            printf(STATUS_BAR_TEXT);
+        else
+            printf(STATUS_BAR_TEXT_SHORT);
+
+    }
+}
+
 int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's main printing/render logic
 
     if(window_resized == 1){
@@ -616,41 +658,8 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
     else{
         
         printf(HIDE_CURSOR);
-        // Place cursor on the second to last line of terminal screen (status bar).
-        CURSOR_MOVE_ROW(ws->ws_row-1);
-        if(file_saved_flag){
-
-            printf("---\r\nFile \"%s\" saved successfully!", e->curr_path);
-            file_saved_flag = 0;
-
-        }else if(file_opened_flag){
-
-            printf("---\r\nFile \"%s\" opened successfully!", e->curr_path);
-            file_opened_flag = 0;
-            
-        }else if(file_open_error_flag){
-
-            printf("---\r\nFile \"%s\" not found or unable to open!", e->curr_path);
-            file_open_error_flag = 0;
-
-        }else if(input_mode_change_flag){
-            
-            printf(REFRESH_BELOW_CURSOR);
-            if(overtype_mode)
-                printf("---\r\nTyping mode changed (overwrite)");
-            else
-                printf("---\r\nTyping mode changed (insert)");
-            input_mode_change_flag = 0;
-
-        }else{
-            if(ws->ws_col >= strlen(STATUS_BAR_TEXT_LONG) - 12*5) // 12 is the number of special characters used for formatting (invis) all the "CTRL+" commands
-                printf(STATUS_BAR_TEXT_LONG);
-            else if(ws->ws_col >= strlen(STATUS_BAR_TEXT) - 12*5)
-                printf(STATUS_BAR_TEXT);
-            else
-                printf(STATUS_BAR_TEXT_SHORT);
-
-        }
+        
+        print_status_bar(ws, e);
 
         if(window_resized){
             return_to_editor_screen = 1;
@@ -689,12 +698,6 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
             CURSOR_MOVE_ROW(e->line_number - e->upper_screen_bound + 1);
             printf(REFRESH_ENTIRE_LINE);
             printf("%s", e->text_lines[e->line_number]);
-            //v Make it work later !
-            /*printf("\e[%d;%dH", line_number - *upper_screen_bound + 1, char_number + 1);
-            printf(REFRESH_TIL_LINE_END);
-            for(int i = char_number; i < actual_char_counts[line_number]; i++){
-                putchar(text_lines[line_number][i]);
-            }*/
         }
 
         // Place cursor at appropriate line/column
