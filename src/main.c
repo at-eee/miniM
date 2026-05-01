@@ -194,6 +194,16 @@ int input_file_name_logic(struct editor_state *e){
     return 0;
 }
 
+int file_operation(struct editor_state *e, int (*file_operat)(struct editor_state *e)){
+
+    int ret_val = (*file_operat)(e);
+
+    printf(FULL_SCREEN_REFRESH);
+    return_to_editor_screen = 1;
+
+    return ret_val;
+}
+
 int open_new_file_logic(struct editor_state *e){
     
     char temp_c;
@@ -202,15 +212,16 @@ int open_new_file_logic(struct editor_state *e){
     while(1){
         if(read(tty_fd, &temp_c, 1) == 1){
             if(temp_c == 'Y' || temp_c == 'y' || temp_c == '\r'){
-
-                e->line_count = STARTING_TEXT_LINES;
                 
                 free_text_mem(e);
+
+                e->line_count = STARTING_TEXT_LINES;
 
                 alloc_mem_for_text(e);
                 
                 e->line_number = 0;
                 e->char_number = 0;
+                e->upper_screen_bound = 0;
                 e->line_count = STARTING_TEXT_LINES;
                 //line_count being cached as zero'ed and allocated later faster would be nice (instead of freeing them and mallocing them later)
                 strcpy(e->curr_path, "");
@@ -220,9 +231,6 @@ int open_new_file_logic(struct editor_state *e){
             }
         }
     }
-
-    printf(FULL_SCREEN_REFRESH);
-    return_to_editor_screen = 1;
 
     return 0;
 }
@@ -291,7 +299,6 @@ int open_file_logic(struct editor_state *e){
     if (fd < 0) {
         perror("open");
         file_open_error_flag = 1;
-        return_to_editor_screen = 1;
         return -1;
     }
 
@@ -346,9 +353,6 @@ int open_file_logic(struct editor_state *e){
 
     close(fd);
     file_opened_flag = 1;
-    return_to_editor_screen = 1;
-
-    printf(FULL_SCREEN_REFRESH);
 
     return 0;
 }
@@ -365,7 +369,7 @@ int save_file_logic(struct editor_state *e){
     int fd = open(e->curr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd == -1) {
         perror("open");
-        return_to_editor_screen = 1;
+        file_saved_flag = 1;
         return -1;
     }
 
@@ -404,9 +408,6 @@ int save_file_logic(struct editor_state *e){
 
     close(fd);
     file_saved_flag = 1;
-    return_to_editor_screen = 1;
-
-    printf(FULL_SCREEN_REFRESH);
 
     return 0;
 }
@@ -483,12 +484,12 @@ int key_handling(struct editor_state *e, int lite_mode_flag){
 
         if (e->c == CTRL_S) { // Saves to a file
 
-            save_file_logic(e);
+            file_operation(e, save_file_logic);
             return 0;
 
         }else if (e->c == CTRL_O) { // Opens a file
 
-            open_file_logic(e);
+            file_operation(e, open_file_logic);
             return 0;
 
         }else if (e->c == CTRL_Q) { // Quits program
@@ -497,7 +498,7 @@ int key_handling(struct editor_state *e, int lite_mode_flag){
 
         }else if (e->c == CTRL_N) { // Opens new file
 
-            open_new_file_logic(e);
+            file_operation(e, open_new_file_logic);
             return 0;
 
         }else if (e->c == KEY_ENTER) { // <- CR "return" handling
@@ -587,14 +588,14 @@ int key_handling(struct editor_state *e, int lite_mode_flag){
     
     e->text_lines[e->line_number][e->char_number] = e->c; // assigning new char
 
-    if(e->actual_char_counts[e->line_number] >= e->allocated_char_counts[e->line_number] - 1){// Safety measurements
+    if(e->actual_char_counts[e->line_number] >= e->allocated_char_counts[e->line_number] - 1){ // Safety measurements
         
         grow_curr_line_len(e);
 
     }
     
     e->char_number += 1;
-    if(e->char_number > e->actual_char_counts[e->line_number] && overtype_mode) // In case of overtype mode (to not repat for insert input mode)
+    if(e->char_number > e->actual_char_counts[e->line_number] && overtype_mode) // In case of overtype mode (to not repeat for insert input mode)
         e->actual_char_counts[e->line_number] += 1;
     
     has_line_changed = 0;
@@ -616,7 +617,7 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
     else{
         
         printf(HIDE_CURSOR);
-        //Place cursor on the second to last line of terminal screen (status bar).
+        // Place cursor on the second to last line of terminal screen (status bar).
         CURSOR_MOVE_ROW(ws->ws_row-1);
         if(file_saved_flag){
 
@@ -643,7 +644,7 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
             input_mode_change_flag = 0;
 
         }else{
-            if(ws->ws_col >= strlen(STATUS_BAR_TEXT_LONG) - 12*5) //12 is the number of special characters used for formatting (invis) all the "CTRL+" commands
+            if(ws->ws_col >= strlen(STATUS_BAR_TEXT_LONG) - 12*5) // 12 is the number of special characters used for formatting (invis) all the "CTRL+" commands
                 printf(STATUS_BAR_TEXT_LONG);
             else if(ws->ws_col >= strlen(STATUS_BAR_TEXT) - 12*5)
                 printf(STATUS_BAR_TEXT);

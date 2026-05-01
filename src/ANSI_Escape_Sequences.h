@@ -2,13 +2,16 @@
 
 // Refreshes screen and moves cursor to top-left (default) position:
 #define FULL_SCREEN_REFRESH "\e[2J\e[H" 
-// Moves cursor 2 lines up, refreshes from cursor to beginning of terminal position (X: 1, Y: 1) and places it there.
+// Moves cursor 2 lines up, refreshes from cursor to beginning of terminal position (X: 1, Y: 1) and places it there:
 #define REFRESH_ABOVE_STATUS_BAR "\e[2A\e[1J\e[H"
 #define REFRESH_BELOW_CURSOR "\e[0J"
+// Moves cursor to position (1,1):
+#define CURSOR_DEFAULT_POS "\e[H"
 #define CURSOR_JUMP_1_LINE_UP "\e[1A"
+#define CURSOR_JUMP_1_LINE_DOWN "\e[1B"
 #define CURSOR_MOVE_1_COL_LEFT "\e[1D"
 #define REFRESH_ENTIRE_LINE "\e[2K"
- // Erases from cursor to end of line.
+// Erases from cursor to end of line:
 #define REFRESH_TIL_LINE_END "\e[0K"
 #define HIDE_CURSOR "\e[?25l"
 #define SHOW_CURSOR "\e[?25h"
