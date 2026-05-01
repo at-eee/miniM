@@ -660,7 +660,7 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
         // Checks if screen has scrolled and if yes, refreshes whole editor's text space and prints whole text again
         int screen_scrolled = 0; 
 
-        //Printing proper editor's main text: // !!! Return to this later
+        //Printing proper editor's main text:
         if(e->upper_screen_bound == e->line_number){
             if(e->line_number != 0){
                 e->upper_screen_bound -= 1;
@@ -683,6 +683,7 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
 
             screen_scrolled = 0;
             return_to_editor_screen = 0;
+            has_line_changed = 0;
 
         }else{
             CURSOR_MOVE_ROW(e->line_number - e->upper_screen_bound + 1);
