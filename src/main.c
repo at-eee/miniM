@@ -513,10 +513,34 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
                 grow_line_count(e);
 
             }
+            
+            for(int i = e->actual_last_line; i > e->line_number; i--){
+                // ! put it into separate copy line function later
+                for(int j = 0; j < e->actual_char_counts[i]; j++){
+                    e->text_lines[i+1][j] = e->text_lines[i][j];
+                }
+                e->actual_char_counts[i+1] = e->actual_char_counts[i];
+                e->text_lines[i+1][e->actual_char_counts[i]] = '\0';
+            }
+
+            // In case enter is pressed mid-line
+            if(e->char_number < e->actual_char_counts[e->line_number]){
+
+                int count = 0;
+                for(int i = e->char_number; i < e->actual_char_counts[e->line_number]; i++){
+                    e->text_lines[e->line_number+1][count] = e->text_lines[e->line_number][i];
+                    count++; 
+                }
+
+                e->text_lines[e->line_number][e->char_number] = '\0';
+                e->actual_char_counts[e->line_number+1] = count;
+                e->text_lines[e->line_number+1][count] = '\0';
+            }
 
             e->line_number += 1;
-            if(e->line_number > e->actual_last_line)
-                e->actual_last_line = e->line_number;
+            e->actual_last_line += 1;
+            //if(e->line_number > e->actual_last_line)
+            //    e->actual_last_line = e->line_number;
             if(e->line_number - e->upper_screen_bound > ws->ws_row-3){
                 screen_scrolled_flag = 1;
                 e->upper_screen_bound += 1;
@@ -524,7 +548,7 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
             has_line_changed = 1;
             e->char_number = 0;
 
-            e->text_lines[e->line_number][e->char_number] = '\0';
+            //e->text_lines[e->line_number][e->char_number] = '\0'; // Should still be safe without it
             
             return 0;
 
@@ -667,8 +691,7 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
         }
     }
 
-    if(DEBUG_MODE){}
-    else{
+    if(!DEBUG_MODE){
         
         printf(HIDE_CURSOR);
         
@@ -684,7 +707,7 @@ int print_logic(struct winsize *ws, struct editor_state *e){ // The editor's mai
 
             printf(REFRESH_ABOVE_STATUS_BAR);
 
-            int limit = e->actual_last_line - e->upper_screen_bound;
+            int limit = e->actual_last_line - e->upper_screen_bound + 1;
             if(limit > ws->ws_row-2)
                 limit = ws->ws_row-2;
             for(int i = e->upper_screen_bound; i < e->upper_screen_bound+limit; i++)
