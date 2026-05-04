@@ -524,7 +524,7 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
             }
 
             // In case enter is pressed mid-line
-            if(e->char_number < e->actual_char_counts[e->line_number]){
+            if(e->char_number <= e->actual_char_counts[e->line_number]){
 
                 int count = 0;
                 for(int i = e->char_number; i < e->actual_char_counts[e->line_number]; i++){
