@@ -523,19 +523,15 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
                 e->text_lines[i+1][e->actual_char_counts[i]] = '\0';
             }
 
-            // In case enter is pressed mid-line
-            if(e->char_number < e->actual_char_counts[e->line_number]){
-
-                int count = 0;
-                for(int i = e->char_number; i < e->actual_char_counts[e->line_number]; i++){
-                    e->text_lines[e->line_number+1][count] = e->text_lines[e->line_number][i];
-                    count++; 
-                }
-
-                e->text_lines[e->line_number][e->char_number] = '\0';
-                e->actual_char_counts[e->line_number+1] = count;
-                e->text_lines[e->line_number+1][count] = '\0';
+            int count = 0;
+            for(int i = e->char_number; i < e->actual_char_counts[e->line_number]; i++){
+                e->text_lines[e->line_number+1][count] = e->text_lines[e->line_number][i];
+                count++; 
             }
+
+            e->text_lines[e->line_number][e->char_number] = '\0';
+            e->actual_char_counts[e->line_number+1] = count;
+            e->text_lines[e->line_number+1][count] = '\0';
 
             e->line_number += 1;
             e->actual_last_line += 1;
