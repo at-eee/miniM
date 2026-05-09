@@ -199,6 +199,8 @@ int input_file_name_logic(struct editor_state *e){
 
 int file_operation(struct editor_state *e, int (*file_operat)(struct editor_state *e)){
 
+    printf(FULL_SCREEN_REFRESH);
+
     int ret_val = (*file_operat)(e);
 
     printf(FULL_SCREEN_REFRESH);
@@ -210,7 +212,6 @@ int file_operation(struct editor_state *e, int (*file_operat)(struct editor_stat
 int open_new_file_logic(struct editor_state *e){
     
     char temp_c;
-    printf(FULL_SCREEN_REFRESH);
     printf("Are you sure you wanna open new file? This will delete all unsaved progress on current file [Y/n]");
     while(1){
         if(read(tty_fd, &temp_c, 1) == 1){
@@ -294,7 +295,6 @@ int grow_curr_line_len(struct editor_state *e){
 
 int open_file_logic(struct editor_state *e){
 
-    printf(FULL_SCREEN_REFRESH);
     printf("Please input the name or path and name of file you want to open (You can use relative or absolute path):\r\n\r\n");
     input_file_name_logic(e);
 
@@ -365,8 +365,6 @@ int open_file_logic(struct editor_state *e){
 }
 
 int save_file_logic(struct editor_state *e){
-
-    printf(FULL_SCREEN_REFRESH);
 
     if(strcmp(e->curr_path, "") == 0){
         printf("Please input the saved file name or path and name (You can use relative or absolute path):\r\n\r\n");
@@ -771,7 +769,6 @@ int free_text_mem(struct editor_state *e){
     free(e->allocated_char_counts);
     // Freeing actual_char_counts contents.
     free(e->actual_char_counts);
-    free(e);
 
     return 0;
 }
@@ -838,5 +835,6 @@ int main(void) {
     // Freeing window size data structure
     free(ws);
     free_text_mem(e);
+    free(e);
     return 0;
 }
