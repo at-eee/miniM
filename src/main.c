@@ -557,7 +557,11 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
         if(e->char_number < e->actual_char_counts[e->line_number]){
 
 		    // DELETE CHARACTER LEFT-SIDE OF CURSOR
-            for(int i = e->char_number - 1; i < e->actual_char_counts[e->line_number] - 1; i++){
+            int prev_char = e->char_number - 1;
+            if(prev_char < 0) // OoB check
+                prev_char = 0;
+
+            for(int i = prev_char; i < e->actual_char_counts[e->line_number] - 1; i++){
                 e->text_lines[e->line_number][i] = e->text_lines[e->line_number][i+1];
             }
 
@@ -572,21 +576,29 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
             return 0;
         }
 
-        e->text_lines[e->line_number][e->char_number - 1] = '\0';
+        if(e->char_number == 0 && e->actual_last_line > 0 /*&& e->line_number != 0*/){
 
-        if(e->char_number == 0 && e->line_number > 0){
-
-            if(e->line_number == e->actual_last_line)
-                e->actual_last_line -= 1;
-            e->line_number -= 1;
+            for(int i = e->line_number; i < e->actual_last_line; i++){
+                // ! put it into separate copy line function later
+                for(int j = 0; j < e->actual_char_counts[i+1]; j++){
+                    e->text_lines[i][j] = e->text_lines[i+1][j];
+                }
+                e->actual_char_counts[i] = e->actual_char_counts[i+1];
+                e->text_lines[i][e->actual_char_counts[i]] = '\0';
+            }
+            if(e->line_number > 0){
+                e->line_number -= 1;
+            }
+            e->actual_last_line -= 1;
             has_line_changed = 1;
             e->char_number = strlen(e->text_lines[e->line_number]);
 
-        }else if(e->char_number == 0 && e->line_number == 0){
+        }else if(e->char_number == 0 && e->actual_last_line == 0){
             ;
         }else{
             e->char_number -= 1;
             e->actual_char_counts[e->line_number] -= 1;
+            e->text_lines[e->line_number][e->char_number] = '\0';
         }
 
         return 0;
@@ -759,6 +771,7 @@ int free_text_mem(struct editor_state *e){
     free(e->allocated_char_counts);
     // Freeing actual_char_counts contents.
     free(e->actual_char_counts);
+    free(e);
 
     return 0;
 }
@@ -776,7 +789,7 @@ int main(void) {
     e->allocated_line_count = STARTING_TEXT_LINES;
     e->line_number = 0;
     e->char_number = 0;
-    e->actual_last_line = 0; // Stores number of that actual (not allocated but present) line.
+    e->actual_last_line = 0; // Stores number (index) of that actual (not allocated but present) line.
 
     alloc_mem_for_text(e);
 
