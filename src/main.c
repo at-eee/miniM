@@ -479,7 +479,7 @@ int arrow_key_handling(struct winsize *ws, struct editor_state *e, int lite_mode
 
 }
 
-//                                                  v lite mode is used for key handling in options like: setting file name to save it etc. text areas 
+//                                                  v lite mode is used for key handling in options prompt screens like: save file etc.
 int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag){
 
     if(lite_mode_flag == 0){ // If lite mode isn't present handle all the special characters as well.
@@ -533,16 +533,14 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
 
             e->line_number += 1;
             e->actual_last_line += 1;
-            //if(e->line_number > e->actual_last_line)
-            //    e->actual_last_line = e->line_number;
+
             if(e->line_number - e->upper_screen_bound > ws->ws_row-3){
                 screen_scrolled_flag = 1;
                 e->upper_screen_bound += 1;
             }
+
             has_line_changed = 1;
             e->char_number = 0;
-
-            //e->text_lines[e->line_number][e->char_number] = '\0'; // Should still be safe without it
             
             return 0;
 
@@ -550,9 +548,10 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
 
     }
 
+    //this code block logic should be optimizable (to be more readable etc.)
     if (e->c == KEY_BACKSPACE) { // <- DEL ("backspace") handling
 
-        if(e->char_number < e->actual_char_counts[e->line_number]){
+        if(e->char_number < e->actual_char_counts[e->line_number] && e->char_number != 0){ /*in middle/inside line*/
 
 		    // DELETE CHARACTER LEFT-SIDE OF CURSOR
             int prev_char = e->char_number - 1;
@@ -574,7 +573,16 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
             return 0;
         }
 
-        if(e->char_number == 0 && e->actual_last_line > 0 /*&& e->line_number != 0*/){
+        if(e->char_number == 0 && e->actual_last_line > 0 && e->line_number != 0){ /*beginning of line*/
+
+            int new_line_len = e->actual_char_counts[e->line_number - 1] + e->actual_char_counts[e->line_number];
+            if(new_line_len > e->allocated_char_counts[e->line_number - 1])
+                grow_curr_line_len(e);
+            int counter = 0;
+            for(int i = e->actual_char_counts[e->line_number - 1]; i < new_line_len; i++){
+                e->text_lines[e->line_number-1][i] = e->text_lines[e->line_number][counter];
+                counter++;
+            }
 
             for(int i = e->line_number; i < e->actual_last_line; i++){
                 // ! put it into separate copy line function later
@@ -589,11 +597,14 @@ int key_handling(struct winsize *ws, struct editor_state *e, int lite_mode_flag)
             }
             e->actual_last_line -= 1;
             has_line_changed = 1;
-            e->char_number = strlen(e->text_lines[e->line_number]);
 
-        }else if(e->char_number == 0 && e->actual_last_line == 0){
+            e->char_number = e->actual_char_counts[e->line_number];
+            e->actual_char_counts[e->line_number] = new_line_len;
+            e->text_lines[e->line_number][new_line_len] = '\0';
+
+        }else if(e->char_number == 0 && e->line_number == 0){ /*beginning of first line*/
             ;
-        }else{
+        }else{ /*end of line*/
             e->char_number -= 1;
             e->actual_char_counts[e->line_number] -= 1;
             e->text_lines[e->line_number][e->char_number] = '\0';
@@ -775,7 +786,7 @@ int free_text_mem(struct editor_state *e){
 
 int main(void) {
 
-    signal(SIGWINCH, handle_sigwinch); // Signal (works/is run asynchronously) in case terminal's window size changes.
+    signal(SIGWINCH, handle_sigwinch); // Signal in case terminal's window size changes.
 
     enable_raw_mode();
 
