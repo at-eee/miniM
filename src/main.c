@@ -59,6 +59,7 @@ int input_mode_change_flag = 0; //typing mode (insert/overtype) change informati
 int has_line_changed = 0; // Checks in case currently pointed at text line changed.
 int return_to_editor_screen = 0; // Checks if user returned to editor from different prompt/screen (because it needs additional refresh then).
 int screen_scrolled_flag = 0; // Checks if screen has scrolled and if yes, refreshes whole editor's text space and prints whole text again
+int emergency_save_flag = 0;
 
 void disable_raw_mode() {
     if (tcsetattr(tty_fd, TCSAFLUSH, &original_termios) == -1) {
@@ -245,16 +246,16 @@ int grow_line_count(struct editor_state *e){
     char **extended_text_lines = realloc(e->text_lines, e->allocated_line_count * 2 * sizeof(char*));
     int *extended_allocated_char_counts = realloc(e->allocated_char_counts, e->allocated_line_count * 2 * sizeof(int));
     int *extended_actual_char_counts = realloc(e->actual_char_counts, e->allocated_line_count * 2 * sizeof(int));
+    int is_error = 0;
     if (extended_text_lines == NULL){ // Safety measurements
         perror("unable to perform realloc for extended_text_lines!");
-        exit(1);
-        //! Do some kind of emergency save later here
+        is_error = 1;
     }else if (extended_allocated_char_counts == NULL){
         perror("unable to perform realloc for extended_allocated_char_counts!");
-        exit(1);
+        is_error = 1;
     }else if (extended_actual_char_counts == NULL){
         perror("unable to perform realloc for extended_actual_char_counts!");
-        exit(1);
+        is_error = 1;
     }else{
 
         e->text_lines = extended_text_lines; // New char** pointer appended with new few lines (multiplying current number of lines by 2)
@@ -269,6 +270,13 @@ int grow_line_count(struct editor_state *e){
         e->allocated_line_count *= 2;
     }
 
+    if(is_error){
+        emergency_save_flag = 1;
+        save_file_logic(e);
+        free_text_mem(e);
+        exit(1);
+    }
+
     return 0;
 }
 
@@ -280,8 +288,10 @@ int grow_curr_line_len(struct editor_state *e){
     char *extended_line_size = realloc(e->text_lines[e->line_number], new_size_count * sizeof(char));
     if (extended_line_size == NULL) {
         perror("realloc for growing line length!");
+        emergency_save_flag = 1;
+        save_file_logic(e);
+        free_text_mem(e);
         exit(1);
-        //! Do some kind of emergency save later here
     }
 
     e->text_lines[e->line_number] = extended_line_size;
@@ -366,10 +376,17 @@ int open_file_logic(struct editor_state *e){
 
 int save_file_logic(struct editor_state *e){
 
-    if(strcmp(e->curr_path, "") == 0){
+    if(emergency_save_flag){
+        printf(FULL_SCREEN_REFRESH);
+        perror("Editor error! emergency save performed!!!\r\nyou can find your file named as: \"1.txt\"");
+        strcpy(e->curr_path, "1.txt");
+        goto save;
+    }else if(strcmp(e->curr_path, "") == 0){
         printf("Please input the saved file name or path and name (You can use relative or absolute path):\r\n\r\n");
         input_file_name_logic(e);
     }
+
+    save:
 
     int fd = open(e->curr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd == -1) {
@@ -380,7 +397,7 @@ int save_file_logic(struct editor_state *e){
 
     int max_line_length = 1;
 
-    for(int i = 0; i < e->actual_last_line; i++){
+    for(int i = 0; i <= e->actual_last_line; i++){
         if(e->allocated_char_counts[i] > max_line_length)
             max_line_length = e->allocated_char_counts[i];
     }
@@ -389,7 +406,7 @@ int save_file_logic(struct editor_state *e){
 
     ssize_t bytes_written = 0;
 
-    for(int i = 0; i < e->actual_last_line; i++){
+    for(int i = 0; i <= e->actual_last_line; i++){
 
         size_t len = strlen(e->text_lines[i]);
 
@@ -846,6 +863,6 @@ int main(void) {
     // Freeing window size data structure
     free(ws);
     free_text_mem(e);
-    free(e);
+    free(e); // Temporarily here
     return 0;
 }
